@@ -1,0 +1,26 @@
+CHIP To16 {
+    IN in;
+    OUT out[16];
+    
+    PARTS:
+    
+    And16(
+        a[0]=in,  b[0]=in, 
+        a[1]=in,  b[1]=in, 
+        a[2]=in,  b[2]=in, 
+        a[3]=in,  b[3]=in, 
+        a[4]=in,  b[4]=in, 
+        a[5]=in,  b[5]=in, 
+        a[6]=in,  b[6]=in, 
+        a[7]=in,  b[7]=in, 
+        a[8]=in,  b[8]=in, 
+        a[9]=in,  b[9]=in, 
+        a[10]=in, b[10]=in,
+        a[11]=in, b[11]=in,
+        a[12]=in, b[12]=in,
+        a[13]=in, b[13]=in,
+        a[14]=in, b[14]=in,
+        a[15]=in, b[15]=in,
+        out=out);
+}
+

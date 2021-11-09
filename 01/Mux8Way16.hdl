@@ -1,0 +1,86 @@
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/01/Mux8Way16.hdl
+
+/**
+ * 8-way 16-bit multiplexor:
+ * out = a if sel == 000
+ *       b if sel == 001
+ *       etc.
+ *       h if sel == 111
+ */
+
+/*Full table:
+ * out =  a 000
+ *        b 001
+ *        c 010
+ *        d 011
+ *        e 100
+ *        f 101
+ *        g 110
+ *        h 111
+ */
+
+CHIP Mux8Way16 {
+    IN a[16], b[16], c[16], d[16],
+       e[16], f[16], g[16], h[16],
+       sel[3];
+    OUT out[16];
+
+    PARTS:
+    Mux16(a=a, b=e, sel=sel[2], out=aesel);
+    Mux16(a=b, b=f, sel=sel[2], out=bfsel);
+    Mux16(a=c, b=g, sel=sel[2], out=cgsel);
+    Mux16(a=d, b=h, sel=sel[2], out=dhsel);
+    Mux4Way16(a=aesel, b=bfsel, c=cgsel, d=dhsel, sel=sel[0..1], out=out);
+    
+    /* simple truth table way*/
+    /*
+    Not(in=sel[0], out=ns0);
+    Not(in=sel[1], out=ns1);
+    Not(in=sel[2], out=ns2);
+   
+    And(a=ns2, b=ns1, out=ff);
+    And(a=ns2, b=sel[1], out=ft);
+    And(a=sel[2], b=ns1, out=tf);
+    And(a=sel[2], b=sel[1], out=tt);
+    
+    And(a=ff, b=ns0, out=fff);
+    And(a=ff, b=sel[0], out=fft);
+    And(a=ft, b=ns0, out=ftf);
+    And(a=ft, b=sel[0], out=ftt);
+    And(a=tf, b=ns0, out=tff);
+    And(a=tf, b=sel[0], out=tft);
+    And(a=tt, b=ns0, out=ttf);
+    And(a=tt, b=sel[0], out=ttt);
+
+    To16(in=fff, out=fff16);
+    To16(in=fft, out=fft16);
+    To16(in=ftf, out=ftf16);
+    To16(in=ftt, out=ftt16);
+    To16(in=tff, out=tff16);
+    To16(in=tft, out=tft16);
+    To16(in=ttf, out=ttf16);
+    To16(in=ttt, out=ttt16);
+
+    And16(a=a, b=fff16, out=asel);
+    And16(a=b, b=fft16, out=bsel);
+    And16(a=c, b=ftf16, out=csel);
+    And16(a=d, b=ftt16, out=dsel);
+    And16(a=e, b=tff16, out=esel);
+    And16(a=f, b=tft16, out=fsel);
+    And16(a=g, b=ttf16, out=gsel);
+    And16(a=h, b=ttt16, out=hsel);
+
+    Or16(a=asel, b=bsel, out=tmp1);
+    Or16(a=tmp1, b=csel, out=tmp2);
+    Or16(a=tmp2, b=dsel, out=tmp3);
+    Or16(a=tmp3, b=esel, out=tmp4);
+    Or16(a=tmp4, b=fsel, out=tmp5);
+    Or16(a=tmp5, b=gsel, out=tmp6);
+    Or16(a=tmp6, b=hsel, out=out);
+    */
+
+}
+
