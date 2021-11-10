@@ -16,6 +16,11 @@ CHIP DMux4Way {
     OUT a, b, c, d;
 
     PARTS:
+    DMux(in=in, sel=sel[1], a=absel, b=cdsel);
+    DMux(in=absel, sel=sel[0], a=a, b=b);
+    DMux(in=cdsel, sel=sel[0], a=c, b=d);
+
+    /*simple truth table method
     Not(in=sel[1], out=ns1);
     Not(in=sel[0], out=ns0);
 
@@ -28,4 +33,5 @@ CHIP DMux4Way {
     And(a=ft, b=in, out=b);
     And(a=tf, b=in, out=c);
     And(a=tt, b=in, out=d);
+    */
 }
