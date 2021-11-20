@@ -16,5 +16,30 @@ CHIP PC {
     OUT out[16];
 
     PARTS:
-    // Put your code here:
+    //This is tricky to describe
+    //
+    //Overview:
+    //input into the Register will be determined by the reset,load,inc bits
+    //if reset, input will be 0
+    //if load, input will be in
+    //if inc, input will be the register.next + 1
+    //
+    //That input will be loaded into the register if any of the flags (reset,load,inc) is set. 
+    //Otherwise, input is ignored, and the register state remains the same
+
+    //Are any of the flags set? If so, the Register will change.
+    Or(a=load, b=reset, out=t1);
+    Or(a=t1, b=inc, out=change);
+    
+    //feed the registers next output into the Inc chip to determine the incremented value for the next cycle
+    Inc16(in=rnext, out=rnextpp);
+
+    //going up the if/else backwards guarantees things work
+    //(ie: if load && inc, we only want load)
+    Mux16(a=in, b=rnextpp, sel=inc, out=sel1);
+    Mux16(a=sel1, b=in, sel=load, out=sel2);
+    Mux16(a=sel2, b=false, sel=reset, out=selin);
+    
+    Register(in=selin, load=change, out=rnext, out=out);
+    
 }
