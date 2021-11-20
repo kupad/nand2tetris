@@ -14,6 +14,23 @@ CHIP RAM64 {
     IN in[16], load, address[6];
     OUT out[16];
 
+    //address: xxxyyy:
+    //xxx addresses a RAM8 chip
+    //yyy addresses a register in the RAM8 chip
+
     PARTS:
-    // Put your code here:
+    DMux8Way(in=load, sel=address[3..5], 
+        a=lr0, b=lr1, c=lr2, d=lr3, e=lr4, f=lr5, g=lr6, h=lr7);
+
+    RAM8(in=in, load=lr0, address=address[0..2], out=r0);
+    RAM8(in=in, load=lr1, address=address[0..2], out=r1);
+    RAM8(in=in, load=lr2, address=address[0..2], out=r2);
+    RAM8(in=in, load=lr3, address=address[0..2], out=r3);
+    RAM8(in=in, load=lr4, address=address[0..2], out=r4);
+    RAM8(in=in, load=lr5, address=address[0..2], out=r5);
+    RAM8(in=in, load=lr6, address=address[0..2], out=r6);
+    RAM8(in=in, load=lr7, address=address[0..2], out=r7);
+    
+    Mux8Way16(a=r0, b=r1, c=r2, d=r3, e=r4, f=r5, g=r6, h=r7, sel=address[3..5], out=out);
 }
+
