@@ -11,51 +11,44 @@
 // "white" in every pixel;
 // the screen should remain fully clear as long as no key is pressed.
 
-(LOOP)
+(MAINLOOP)
 
-//set @ncolor to white.
-//@ncolor <- 0 
+//set @color to white.
+//@color <- 0 
 @0
 D=A
-@ncolor
+@color
 M=D
 
 //read in keyboard:
-//If it's anything but zero, the next color is black.
-
-(READ)
+//If it's anything but zero, the @color will be set to black.
 @KBD
 D=M
-@RESETIFCHANGE
+@DRAW
 D;JEQ
 
-//set @ncolor to black.
-//@ncolor <- -1
-//Note: we know ncolor is 0 right now. so we can just decr
-@ncolor
+//set @color to black.
+//NOTE: we know color is 0 right now. so we can just decr @color
+//@color <- @color - 1
+@color
 M=M-1
 
-//reset @screenptr if: 
-//color != ncolor (if: color+ncolor+1==0, then we changed)
-(RESETIFCHANGE)
-@color
-D=M
-@ncolor
-D=D+M
-D=D+1
-@SETCOLOR
-D;JNE
+(DRAW)
+//@screenptr <- @SCREEN
 @SCREEN
 D=A
 @screenptr
 M=D
 
-//@color <- @ncolor
-(SETCOLOR)
-@ncolor
-D=M
-@color
-M=D
+//NOTE: @SREEN's last pixel is at 24575
+//while @screenptr < 24576, fill screen with @color
+(DRAWLOOP)
+@24576
+D=A
+@screenptr
+D=D-M
+@ENDDRAW
+D;JLE
 
 // [@screenptr] <- @color
 @color
@@ -68,20 +61,12 @@ M=D
 @screenptr
 M=M+1
 
-//@screenptr >= 24576, reset
-@24576
-D=A
-@screenptr
-D=D-M
-@BOTTOM
-D;JGE
-@SCREEN
-D=A
-@screenptr
-M=D
+@DRAWLOOP
+0;JMP
 
-(BOTTOM)
+(ENDDRAW)
 
-@LOOP
+//go back to the main loop
+@MAINLOOP
 0;JMP
 
