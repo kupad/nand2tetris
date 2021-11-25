@@ -41,9 +41,10 @@ D=A
 M=D
 
 //NOTE: @SREEN's last pixel is at 24575
+//NOTE: @KBD == 24576
 //while @screenptr < 24576, fill screen with @color
 (DRAWLOOP)
-@24576
+@KBD
 D=A
 @screenptr
 D=D-M
