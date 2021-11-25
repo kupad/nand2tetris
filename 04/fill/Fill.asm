@@ -50,6 +50,7 @@ D=D-M
 @ENDDRAW
 D;JLE
 
+//set the address @screenptr is pointing at to @color
 // [@screenptr] <- @color
 @color
 D=M
