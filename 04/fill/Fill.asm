@@ -50,20 +50,20 @@ D=D-M
 @ENDDRAW
 D;JLE
 
-//set the address @screenptr is pointing at to @color
-// [@screenptr] <- @color
-@color
-D=M
-@screenptr
-A=M
-M=D
+    //set the address @screenptr is pointing at to @color
+    // [@screenptr] <- @color
+    @color
+    D=M
+    @screenptr
+    A=M
+    M=D
 
-//@screenptr <- @screenptr + 1
-@screenptr
-M=M+1
+    //@screenptr <- @screenptr + 1
+    @screenptr
+    M=M+1
 
-@DRAWLOOP
-0;JMP
+    @DRAWLOOP
+    0;JMP
 
 (ENDDRAW)
 
