@@ -13,29 +13,30 @@
 
 (LOOP)
 
-//@ncolor <- 0
-(WHITE)
+//set @ncolor to white.
+//@ncolor <- 0 
 @0
 D=A
 @ncolor
 M=D
 
 //read in keyboard:
-//If it's anything but zero, the next color is black
+//If it's anything but zero, the next color is black.
+
 (READ)
 @KBD
 D=M
 @RESETIFCHANGE
 D;JEQ
 
+//set @ncolor to black.
 //@ncolor <- -1
 //Note: we know ncolor is 0 right now. so we can just decr
-(BLACK)
 @ncolor
 M=M-1
 
-//reset @screenptr if color != ncolor 
-//if: color+ncolor+1==0, then we changed
+//reset @screenptr if: 
+//color != ncolor (if: color+ncolor+1==0, then we changed)
 (RESETIFCHANGE)
 @color
 D=M
@@ -63,9 +64,23 @@ D=M
 A=M
 M=D
 
-//@screenptr <- @screenptr +1
+//@screenptr <- @screenptr + 1
 @screenptr
 M=M+1
+
+//@screenptr >= 24576, reset
+@24576
+D=A
+@screenptr
+D=D-M
+@BOTTOM
+D;JGE
+@SCREEN
+D=A
+@screenptr
+M=D
+
+(BOTTOM)
 
 @LOOP
 0;JMP
