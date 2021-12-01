@@ -26,6 +26,35 @@ CHIP Memory {
     IN in[16], load, address[15];
     OUT out[16];
 
+    //2^15, 32768
+    //2^14, 16384
+    //2^13, 8192
+    //2^12, 4096
+  
+    //edcba9876543210
+    //xxxxxxxxxxxxxxx
+    //| 
+    //16384 address[14]
+   
+    //These are the chips we're using and the ranges relevant to them
+    //RAM16K(in[16], load=1/0, address=[14], out=[16]);     //0x0000-0x3FFF,0-16383,    000000000000000-011111111111111
+    //Screen(in[16], load=1/0, address=[13], out=[16]);     //0x4000-0x5FFF,16384-24575,100000000000000-101111111111111
+    //Keyboard(out=[16]);                                   //0x6000        24576      ,110000000000000-110000000000000
+    
     PARTS:
-    // Put your code here:
+    //We only need to look at the MSB to determine whether RAM16K is being loaded or the Screen
+    DMux(in=load, sel=address[14], a=lr16, b=lscr);
+    
+    RAM16K(in=in, load=lr16, address=address[0..13], out=r16);
+    Screen(in=in, load=lscr, address=address[0..12], out=scr);
+    Keyboard(out=kbd);
+
+    //We look at the 2 MSBs. Look at the address ranges above see why these mappings work
+    //
+    //00 -> r16
+    //01 -> r16
+    //10 -> scr
+    //11 -> kbd
+    Mux4Way16(a=r16, b=r16, c=scr, d=kbd, sel=address[13..14], out=out);
 }
+
