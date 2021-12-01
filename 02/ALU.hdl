@@ -45,7 +45,29 @@ CHIP ALU {
     
     /* process x */
     //apply zx: choose x or 0
+    /*
     Mux16(a=x, b=false, sel=zx, out=zxa);
+    */
+    Not(in=zx, out=nzx);
+    And16(a=x, 
+        b[0]=nzx,
+        b[1]=nzx,
+        b[2]=nzx,
+        b[3]=nzx,
+        b[4]=nzx,
+        b[5]=nzx,
+        b[6]=nzx,
+        b[7]=nzx,
+        b[8]=nzx,
+        b[9]=nzx,
+        b[10]=nzx,
+        b[11]=nzx,
+        b[12]=nzx,
+        b[13]=nzx,
+        b[14]=nzx,
+        b[15]=nzx,
+        out=zxa);
+
     //apply nx: choose zxa or !zxa
     Not16(in=zxa, out=nzxa);
     Mux16(a=zxa, b=nzxa, sel=nx, out=xx);
