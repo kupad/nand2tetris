@@ -13,12 +13,10 @@
 
 (MAINLOOP)
 
-//set @color to white.
+//set @color to white (0)
 //@color <- 0 
-@0
-D=A
 @color
-M=D
+M=0
 
 //read in keyboard:
 //If it's anything but zero, the @color will be set to black.
@@ -27,44 +25,42 @@ D=M
 @DRAW
 D;JEQ
 
-//set @color to black.
-//NOTE: we know color is 0 right now. so we can just decr @color
+//set @color to black (-1)
 //@color <- @color - 1
 @color
-M=M-1
+M=-1
 
 (DRAW)
-//@screenptr <- @SCREEN
-@SCREEN
-D=A
-@screenptr
-M=D
-
-//NOTE: @SREEN's last pixel is at 24575
-//NOTE: @KBD == 24576
-//while @screenptr < 24576, fill screen with @color
-(DRAWLOOP)
-@KBD
-D=A
-@screenptr
-D=D-M
-@ENDDRAW
-D;JLE
-
-    //set the address @screenptr is pointing at to @color
-    // [@screenptr] <- @color
-    @color
-    D=M
+    //@screenptr <- @SCREEN
+    @SCREEN
+    D=A
     @screenptr
-    A=M
     M=D
 
-    //@screenptr <- @screenptr + 1
-    @screenptr
-    M=M+1
+    //NOTE: @SREEN's last pixel is at 24575, @KBD == 24576
+    //while @screenptr < 24576, fill screen with @color
+    (DRAWLOOP)
+        @KBD
+        D=A
+        @screenptr
+        D=D-M
+        @ENDDRAW
+        D;JLE
 
-    @DRAWLOOP
-    0;JMP
+        //set the address @screenptr is pointing at to @color
+        // [@screenptr] <- @color
+        @color
+        D=M
+        @screenptr
+        A=M
+        M=D
+
+        //@screenptr <- @screenptr + 1
+        @screenptr
+        M=M+1
+
+        @DRAWLOOP
+        0;JMP
 
 (ENDDRAW)
 
