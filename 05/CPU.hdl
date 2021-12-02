@@ -44,11 +44,11 @@ CHIP CPU {
     //A-instr
     //0ccccccccccccccc 
     //  instruction[15] == 0
-    //  c0...c14 is a memory location
+    //  c0...c14 is a memory location (or val)
     //
     //C-instruction:
     //1xxaccccccdddjjj 
-    //instruction[15] == 1
+    //  instruction[15] == 1
     //
     //acccc 'comp' instruction[6-12]
     //  a: instruction[12]
@@ -93,11 +93,10 @@ CHIP CPU {
     /* write to M? */
         And(a=instruction[15], b=instruction[3], out=writeM);
 
-    /* jump / pc */
+    /* jump */
         Not(in=eq, out=ne);
         Not(in=lt, out=ge); 
         And(a=ne, b=ge, out=gt); 
-        Or(a=eq, b=lt, out=le);
 
         /*
          *          j   j   j
@@ -119,8 +118,9 @@ CHIP CPU {
         And(a=instruction[2], b=lt, out=jlt);
         Or(a=jgt,  b=jeq, out=jtmp1);
         Or(a=jtmp1, b=jlt, out=jtmp2);
-        And(a=instruction[15], b=jtmp2, out=jmp);
+        And(a=instruction[15], b=jtmp2, out=isjmp);
 
-        PC(in=Aout, load=jmp, inc=true, reset=reset, out[0..14]=pc);
+    /* PC */
+        PC(in=Aout, load=isjmp, inc=true, reset=reset, out[0..14]=pc);
 }
 
