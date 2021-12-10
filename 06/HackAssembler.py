@@ -117,6 +117,10 @@ class Parser:
         self.fd.close()
 
 
+class CodeError(Exception):
+    pass
+
+
 class Code:
     """
     tranlates assembly tokens into binary
@@ -173,16 +177,41 @@ class Code:
     def jump(self, tok):
         return self.jmpmap[tok]
 
+    def cinstr(self, symb):
+        """111|comp|dest|jmp"""
+        return '111' + (codegen.dest(parser.comptok) +
+                        codegen.comp(parser.desttok) +
+                        codegen.jump(parser.jmptok))
+
+    def ainstr(self, symb):
+        """
+        given @xxx, op is xxx
+        0{15}
+        """
+        return '0' + format(int(symb), '015b')
+
 
 if __name__ == '__main__':
-    parser = Parser(sys.argv[1])
+    infilename = sys.argv[1]
+    outfilename = sys.argv[2]
 
-    while parser.has_next():
-        instr = parser.advance()
-        if parser.instr_type() is InstrType.C:
-            parser.dest()
-            parser.comp()
-            parser.jump()
-        print(instr)
+    with open(outfilename, 'w') as outfile:
+        parser = Parser(infilename)
+        codegen = Code()
+
+        while parser.has_next():
+            parser.advance()
+            itype = parser.instr_type()
+            """111|comp|dest|jmp"""
+            if itype is InstrType.C:
+                binout = '111' + (codegen.comp(parser.comptok) +
+                                  codegen.dest(parser.desttok) +
+                                  codegen.jump(parser.jmptok))
+            elif itype is InstrType.A:
+                binout = codegen.ainstr(parser.symbol())
+            else:
+                pass
+            # print(parser.instr, '->', binout)
+            print(binout, file=outfile)
 
     parser.close()
