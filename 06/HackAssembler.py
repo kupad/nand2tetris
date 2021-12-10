@@ -27,22 +27,28 @@ class ParserError(Exception):
 
 
 class Parser:
+    EMPTYTOK = ''
+
     def __init__(self, filename):
         self.fd = open(filename)  # the file we're assembling
         self.nextline = self.fd.readline()  # next line to be processed
         self.instr = None  # The current instruction
-        self.desttok = self.comptok = self.jmptok = None  # tokens:
+        self.desttok = self.comptok = self.jmptok = None  # tokens
         # self.instrno = 0   # The current instruction #
 
     def has_next(self):
         """are there any more lines to process?"""
-
         return self.nextline != ""
 
     def _tokenize(self):
+        """
+        Takes the current C-instruction and breaks it down into
+        the 3 tokens: dest, comp and jmp
+        dest and jmp can be empty, only comp is mandatory
+        """
         # split instruction on '='. We have a lhs if len > 1
         eqsplit = self.instr.split('=')
-        self.desttok = eqsplit[0] if len(eqsplit) > 1 else ''
+        self.desttok = eqsplit[0] if len(eqsplit) > 1 else self.EMPTYTOK
 
         # split the rest on ';'
         # comp is always the leftmost.
@@ -50,7 +56,7 @@ class Parser:
         rest = eqsplit[-1]
         scsplit = rest.split(';')
         self.comptok = scsplit[0]
-        self.jmptok = scsplit[-1] if len(scsplit) > 1 else ''
+        self.jmptok = scsplit[-1] if len(scsplit) > 1 else self.EMPTYTOK
 
     def advance(self):
         """advance to the next instruction"""
@@ -70,7 +76,8 @@ class Parser:
             return self.advance()
 
     def instr_type(self):
-        """is this an A, C, or L instruction
+        """
+        Is this an A, C, or L instruction?
 
         A: starts with @
         L: labels, (label)
@@ -97,21 +104,33 @@ class Parser:
             msg = f'cannot get symbol for: {self.instr}: not A or L type'
             raise ParserError(msg)
 
-    destmap = defaultdict(lambda: '000', {k: v for k, v in [
-        ('M', '001'),
-        ('D', '010'),
-        ('DM', '011'),
-        ('A', '100'),
-        ('AM', '101'),
-        ('AD', '110'),
-        ('ADM', '111'),
-    ]})
-
     def dest(self):
-        if not self.instr_type() is InstrType.C:
-            msg = f'cannot get dest for: {self.instr}: not C type'
-            raise ParserError(msg)
-        return self.destmap[self.desttok]
+        return self.desttok
+
+    def comp(self):
+        return self.comptok
+
+    def jump(self):
+        return self.jmptok
+
+    def close(self):
+        self.fd.close()
+
+
+class Code:
+    """
+    tranlates assembly tokens into binary
+    """
+    destmap = {
+        Parser.EMPTYTOK: '000',
+        'M': '001',
+        'D': '010',
+        'DM': '011',
+        'A': '100',
+        'AM': '101',
+        'AD': '110',
+        'ADM': '111',
+    }
 
     compmap = {
         "0":   "0101010",
@@ -134,14 +153,8 @@ class Parser:
         "D|A": "0010101", "D|M": "1010101",
     }
 
-    def comp(self):
-        if not self.instr_type() is InstrType.C:
-            msg = f'cannot get dest for: {self.instr}: not C type'
-            raise ParserError(msg)
-        return self.compmap[self.comptok]
-
     jmpmap = {
-        '':    '000',
+        Parser.EMPTYTOK: '000',
         'JGT': '001',
         'JEQ': '010',
         'JGE': '011',
@@ -151,14 +164,14 @@ class Parser:
         'JMP': '111',
     }
 
-    def jump(self):
-        if not self.instr_type() is InstrType.C:
-            msg = f'cannot get dest for: {self.instr}: not C type'
-            raise ParserError(msg)
-        return self.jmpmap[self.jmptok]
+    def dest(self, tok):
+        return self.destmap[tok]
 
-    def close(self):
-        self.fd.close()
+    def comp(self, tok):
+        return self.compmap[tok]
+
+    def jump(self, tok):
+        return self.jmpmap[tok]
 
 
 if __name__ == '__main__':
