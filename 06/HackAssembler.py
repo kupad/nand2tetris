@@ -30,12 +30,14 @@ class Parser:
         self.nextline = self.fd.readline()  # next line to be processed
         self.instr = None  # The current instruction
         self.instrno = -1   # The current instruction num. starts at 0
+        self.instrtype = None  # type of current instruction
 
     def reset(self):
         self.fd.seek(0)
         self.nextline = self.fd.readline()
         self.instr = None
         self.instrno = -1
+        self.instrtype = None
 
     def has_next(self):
         """are there any more lines to process?"""
@@ -80,15 +82,16 @@ class Parser:
         curr = self.commentpattern.sub('', curr).strip()
         if curr != "":
             self.instr = curr
-            if self.instr_type() is not InstrType.L:
+            self.instrtype = self._instrtype()
+            if self.instrtype is not InstrType.L:
                 self.instrno += 1
             return self.instr
         else:
             return self.advance()
 
-    def instr_type(self):
+    def _instrtype(self):
         """
-        Is this an A, C, or L instruction?
+        Calc: Is this an A, C, or L instruction?
 
         A: starts with @
         L: labels, (label)
@@ -106,10 +109,9 @@ class Parser:
         if A @xxx return xxx
         if L (xxx) return xxx
         """
-        itype = self.instr_type()
-        if itype is InstrType.A:
+        if self.instrtype is InstrType.A:
             return self.instr[1:]
-        elif itype is InstrType.L:
+        elif self.instrtype is InstrType.L:
             return self.instr[1:-1]
         else:
             msg = f'cannot get symbol for: {self.instr}: not A or L type'
@@ -247,7 +249,7 @@ if __name__ == '__main__':
     # first pass: put labels in symbol table
     while p.has_next():
         p.advance()
-        if p.instr_type() is InstrType.L:
+        if p.instrtype is InstrType.L:
             symbols[p.symbol()] = p.instrno + 1
 
     p.reset()
@@ -256,11 +258,10 @@ if __name__ == '__main__':
     with open(outfilename, 'w') as outfile:
         while p.has_next():
             p.advance()
-            itype = p.instr_type()
-            if itype is InstrType.C:
+            if p.instrtype is InstrType.C:
                 desttok, comptok, jmptok = p.tokenize()
                 binout = cinstr(desttok, comptok, jmptok)
-            elif itype is InstrType.A:
+            elif p.instrtype is InstrType.A:
                 binout = ainstr(p.symbol())
             else:
                 continue  # skip labels
