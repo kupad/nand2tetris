@@ -57,14 +57,14 @@ class Parser:
         """
         # split instruction on '='. We have a lhs if len > 1
         eqsplit = self.instr.split('=')
-        self.desttok = eqsplit[0].strip() if len(eqsplit) > 1 else EMPTYTOK
+        self.desttok = eqsplit[0] if len(eqsplit) > 1 else EMPTYTOK
 
         # split the rest on ';'
         # comp is always the leftmost.
         # we have a jmp if splitting on ';' yielded a left and right
         scsplit = eqsplit[-1].split(';')
-        self.comptok = scsplit[0].strip()
-        self.jmptok = scsplit[-1].strip() if len(scsplit) > 1 else EMPTYTOK
+        self.comptok = scsplit[0]
+        self.jmptok = scsplit[-1] if len(scsplit) > 1 else EMPTYTOK
 
     def advance(self):
         """advance to the next instruction"""
@@ -74,7 +74,7 @@ class Parser:
         curr = self.nextline
         self.nextline = self.fd.readline()
 
-        curr = re.sub(r'//.*', '', curr.strip())  # strip newline and comments
+        curr = re.sub(r'//.*', '', curr).strip()
         if curr != "":
             self.instr = curr
             itype = self.instr_type()
@@ -264,7 +264,7 @@ if __name__ == '__main__':
                 binout = ainstr(p.symbol())
             else:
                 continue  # skip labels
-            # print(binout, '<->', p.instr.strip())
+            # print(binout, '<->', p.instr)
             print(binout, file=outfile)
 
     p.close()
