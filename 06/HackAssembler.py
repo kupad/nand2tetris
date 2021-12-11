@@ -28,7 +28,14 @@ class Parser:
         self.nextline = self.fd.readline()  # next line to be processed
         self.instr = None  # The current instruction
         self.desttok = self.comptok = self.jmptok = None  # tokens
-        # self.instrno = 0   # The current instruction #
+        self.instrno = -1   # The current instruction num. starts at 0
+
+    def reset(self):
+        self.fd.seek(0)
+        self.nextline = self.fd.readline()
+        self.instr = None
+        self.desttok = self.comptok = self.jmptok = None
+        self.instrno = -1
 
     def has_next(self):
         """are there any more lines to process?"""
@@ -49,14 +56,14 @@ class Parser:
         """
         # split instruction on '='. We have a lhs if len > 1
         eqsplit = self.instr.split('=')
-        self.desttok = eqsplit[0] if len(eqsplit) > 1 else EMPTYTOK
+        self.desttok = eqsplit[0].strip() if len(eqsplit) > 1 else EMPTYTOK
 
         # split the rest on ';'
         # comp is always the leftmost.
         # we have a jmp if splitting on ';' yielded a left and right
         scsplit = eqsplit[-1].split(';')
-        self.comptok = scsplit[0]
-        self.jmptok = scsplit[-1] if len(scsplit) > 1 else EMPTYTOK
+        self.comptok = scsplit[0].strip()
+        self.jmptok = scsplit[-1].strip() if len(scsplit) > 1 else EMPTYTOK
 
     def advance(self):
         """advance to the next instruction"""
@@ -69,7 +76,10 @@ class Parser:
         curr = re.sub(r'//.*', '', curr.strip())  # strip newline and comments
         if curr != "":
             self.instr = curr
-            if self.instr_type() is InstrType.C:
+            itype = self.instr_type()
+            if itype is not InstrType.L:
+                self.instrno += 1
+            if itype is InstrType.C:
                 self._tokenize()
             return self.instr
         else:
@@ -121,7 +131,7 @@ class CodeError(Exception):
     pass
 
 
-compmap = {
+COMPMAP = {
     "0":   "0101010",
     "1":   "0111111",
     "-1":  "0111010",
@@ -142,7 +152,7 @@ compmap = {
     "D|A": "0010101", "D|M": "1010101",
 }
 
-jmpmap = {
+JMPMAP = {
     EMPTYTOK: '000',
     'JGT': '001',
     'JEQ': '010',
@@ -152,6 +162,19 @@ jmpmap = {
     'JLE': '110',
     'JMP': '111',
 }
+
+# symbol table
+symbols = {
+    'R0': 0, 'R1': 1, 'R2': 2, 'R3': 3,
+    'R4': 4, 'R5': 5, 'R6': 6, 'R7': 7,
+    'R8': 8, 'R9': 9, 'R10': 10, 'R11': 11,
+    'R12': 12, 'R13': 13, 'R14': 14, 'R15': 15,
+    'SP': 0, 'LCL': 1, 'ARG': 2, 'THIS': 3, 'THAT': 4,
+    'SCREEN': 16384, 'KBD': 24576,
+}
+
+nextmem = 16  # next available mem location
+MEMMAX = symbols['SCREEN'] - 1  # max mem location
 
 
 def dest2bits(desttok):
@@ -173,23 +196,49 @@ def dest2bits(desttok):
 
 def cinstr(comptok, desttok, jmptok):
     """111|comp|dest|jmp"""
-    return '111' + compmap[comptok] + dest2bits(desttok) + jmpmap[jmptok]
+    return '111' + COMPMAP[comptok] + dest2bits(desttok) + JMPMAP[jmptok]
 
 
 def ainstr(symb):
     """
     given @xxx, op is xxx
-    0{15}
+    return: 0{01}*15
     """
-    return '0' + format(int(symb), '015b')
+    global nextmem
+
+    # try to get the symb as a number
+    try:
+        asnum = int(symb)
+    except ValueError:
+        asnum = None
+
+    # if it's a number, that's what we load into A
+    # else, we get the val from the symbol table
+    if asnum is not None:
+        val = asnum
+    else:
+        if symb not in symbols:
+            symbols[symb] = nextmem
+            nextmem += 1
+        val = symbols[symb]
+
+    return '0' + format(val, '015b')
 
 
 if __name__ == '__main__':
     infilename = sys.argv[1]
     outfilename = sys.argv[2]
 
+    p = Parser(infilename)
+
+    # first pass: put labels in symbol table
+    while p.has_next():
+        p.advance()
+        if p.instr_type() is InstrType.L:
+            symbols[p.symbol()] = p.instrno + 1
+
+    p.reset()
     with open(outfilename, 'w') as outfile:
-        p = Parser(infilename)
 
         while p.has_next():
             p.advance()
@@ -199,8 +248,9 @@ if __name__ == '__main__':
             elif itype is InstrType.A:
                 binout = ainstr(p.symbol())
             else:
-                pass
-            # print(parser.instr, '->', binout)
+                # skip labels
+                continue
+            # print(binout, '<->', p.instr.strip())
             print(binout, file=outfile)
 
     p.close()
