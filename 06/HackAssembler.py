@@ -121,17 +121,6 @@ class CodeError(Exception):
     pass
 
 
-destmap = {
-    EMPTYTOK: '000',
-    'M': '001',
-    'D': '010',
-    'DM': '011',
-    'A': '100',
-    'AM': '101',
-    'AD': '110',
-    'ADM': '111',
-}
-
 compmap = {
     "0":   "0101010",
     "1":   "0111111",
@@ -165,9 +154,26 @@ jmpmap = {
 }
 
 
+def dest2bits(desttok):
+    """
+    dest contains 3 bits. 0 or indicates the register
+    is being written to.
+
+    000
+    ADM
+
+    ie: DM -> 011
+    """
+    bits = ''
+    bits += '1' if 'A' in desttok else '0'
+    bits += '1' if 'D' in desttok else '0'
+    bits += '1' if 'M' in desttok else '0'
+    return bits
+
+
 def cinstr(comptok, desttok, jmptok):
     """111|comp|dest|jmp"""
-    return '111' + compmap[comptok] + destmap[desttok] + jmpmap[jmptok]
+    return '111' + compmap[comptok] + dest2bits(desttok) + jmpmap[jmptok]
 
 
 def ainstr(symb):
