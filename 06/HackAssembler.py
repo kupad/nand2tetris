@@ -23,6 +23,7 @@ class ParserError(Exception):
 
 
 class Parser:
+    commentpattern = re.compile(r'//.*')
 
     def __init__(self, filename):
         self.fd = open(filename)  # the file we're assembling
@@ -52,6 +53,8 @@ class Parser:
             dest: D,M,A,DM,DA...
             comp: D+1, D&M, ...
             jmp: JGE/JMP/JEQ/...
+
+        returns: (desttok, comptok, jmptok)
         """
         # split instruction on '='. We have a lhs if len > 1
         eqsplit = self.instr.split('=')
@@ -73,11 +76,11 @@ class Parser:
         curr = self.nextline
         self.nextline = self.fd.readline()
 
-        curr = re.sub(r'//.*', '', curr).strip()
+        # strip comments and whitespace
+        curr = self.commentpattern.sub('', curr).strip()
         if curr != "":
             self.instr = curr
-            itype = self.instr_type()
-            if itype is not InstrType.L:
+            if self.instr_type() is not InstrType.L:
                 self.instrno += 1
             return self.instr
         else:
@@ -147,6 +150,25 @@ class CodeError(Exception):
     pass
 
 
+def dest2bits(desttok):
+    """
+    Translates a destination token to binary
+
+    dest contains 3 bits. 0 or indicates the register
+    is being written to.
+
+    000
+    ADM
+
+    ie: DM -> 011
+    """
+    bits = ''
+    bits += '1' if 'A' in desttok else '0'
+    bits += '1' if 'D' in desttok else '0'
+    bits += '1' if 'M' in desttok else '0'
+    return bits
+
+
 COMPMAP = {
     "0":   "0101010",
     "1":   "0111111",
@@ -182,25 +204,6 @@ JMPMAP = {
 
 # The global symbol table
 symbols = SymbolTable()
-
-
-def dest2bits(desttok):
-    """
-    Translates a destination token to binary
-
-    dest contains 3 bits. 0 or indicates the register
-    is being written to.
-
-    000
-    ADM
-
-    ie: DM -> 011
-    """
-    bits = ''
-    bits += '1' if 'A' in desttok else '0'
-    bits += '1' if 'D' in desttok else '0'
-    bits += '1' if 'M' in desttok else '0'
-    return bits
 
 
 def cinstr(desttok, comptok, jmptok):
@@ -251,7 +254,6 @@ if __name__ == '__main__':
 
     # second pass: translate to binary
     with open(outfilename, 'w') as outfile:
-
         while p.has_next():
             p.advance()
             itype = p.instr_type()
