@@ -3,6 +3,7 @@
 
 import sys
 import re
+from collections import UserDict
 from enum import Enum, auto
 
 
@@ -127,6 +128,33 @@ class Parser:
         self.fd.close()
 
 
+class SymbolTable(UserDict):
+    """
+    The symbol table is a dictionary.
+
+    When encountering a symbol for the first time
+    the symbol is entered in the table with nextmem as
+    the value. Then nextmem is incremented.
+    """
+    def __init__(self):
+        super().__init__({
+            'R0': 0, 'R1': 1, 'R2': 2, 'R3': 3,
+            'R4': 4, 'R5': 5, 'R6': 6, 'R7': 7,
+            'R8': 8, 'R9': 9, 'R10': 10, 'R11': 11,
+            'R12': 12, 'R13': 13, 'R14': 14, 'R15': 15,
+            'SP': 0, 'LCL': 1, 'ARG': 2, 'THIS': 3, 'THAT': 4,
+            'SCREEN': 16384, 'KBD': 24576,
+        })
+        # first available memory address is 16 (R0-R15 defined)
+        self.nextmem = 16
+
+    def __getitem__(self, key):
+        if key not in self.data:
+            self.data[key] = self.nextmem
+            self.nextmem += 1
+        return self.data[key]
+
+
 class CodeError(Exception):
     pass
 
@@ -163,22 +191,15 @@ JMPMAP = {
     'JMP': '111',
 }
 
-# symbol table
-symbols = {
-    'R0': 0, 'R1': 1, 'R2': 2, 'R3': 3,
-    'R4': 4, 'R5': 5, 'R6': 6, 'R7': 7,
-    'R8': 8, 'R9': 9, 'R10': 10, 'R11': 11,
-    'R12': 12, 'R13': 13, 'R14': 14, 'R15': 15,
-    'SP': 0, 'LCL': 1, 'ARG': 2, 'THIS': 3, 'THAT': 4,
-    'SCREEN': 16384, 'KBD': 24576,
-}
 
-nextmem = 16  # next available mem location
-MEMMAX = symbols['SCREEN'] - 1  # max mem location
+# The global symbol table
+symbols = SymbolTable()
 
 
 def dest2bits(desttok):
     """
+    Translates a destination token to binary
+
     dest contains 3 bits. 0 or indicates the register
     is being written to.
 
@@ -195,17 +216,24 @@ def dest2bits(desttok):
 
 
 def cinstr(comptok, desttok, jmptok):
-    """111|comp|dest|jmp"""
+    """
+    Given the tokens of a C instr, translate to binary
+
+    111|comp|dest|jmp
+    """
     return '111' + COMPMAP[comptok] + dest2bits(desttok) + JMPMAP[jmptok]
 
 
 def ainstr(symb):
     """
+    Given the symbol of an A token, translate to binary
+
     given @xxx, op is xxx
+
+    if xxx is a number: put into the A reg
+    else find address in symbol table
     return: 0{01}*15
     """
-    global nextmem
-
     # try to get the symb as a number
     try:
         asnum = int(symb)
@@ -214,13 +242,7 @@ def ainstr(symb):
 
     # if it's a number, that's what we load into A
     # else, we get the val from the symbol table
-    if asnum is not None:
-        val = asnum
-    else:
-        if symb not in symbols:
-            symbols[symb] = nextmem
-            nextmem += 1
-        val = symbols[symb]
+    val = asnum if asnum is not None else symbols[symb]
 
     return '0' + format(val, '015b')
 
@@ -238,6 +260,8 @@ if __name__ == '__main__':
             symbols[p.symbol()] = p.instrno + 1
 
     p.reset()
+
+    # second pass: translate to binary
     with open(outfilename, 'w') as outfile:
 
         while p.has_next():
@@ -248,8 +272,7 @@ if __name__ == '__main__':
             elif itype is InstrType.A:
                 binout = ainstr(p.symbol())
             else:
-                # skip labels
-                continue
+                continue  # skip labels
             # print(binout, '<->', p.instr.strip())
             print(binout, file=outfile)
 
