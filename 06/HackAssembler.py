@@ -115,15 +115,6 @@ class Parser:
             msg = f'cannot get symbol for: {self.instr}: not A or L type'
             raise ParserError(msg)
 
-    def dest(self):
-        return self.desttok
-
-    def comp(self):
-        return self.comptok
-
-    def jump(self):
-        return self.jmptok
-
     def close(self):
         self.fd.close()
 
