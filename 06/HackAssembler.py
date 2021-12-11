@@ -28,21 +28,19 @@ class Parser:
         self.fd = open(filename)  # the file we're assembling
         self.nextline = self.fd.readline()  # next line to be processed
         self.instr = None  # The current instruction
-        self.desttok = self.comptok = self.jmptok = None  # tokens
         self.instrno = -1   # The current instruction num. starts at 0
 
     def reset(self):
         self.fd.seek(0)
         self.nextline = self.fd.readline()
         self.instr = None
-        self.desttok = self.comptok = self.jmptok = None
         self.instrno = -1
 
     def has_next(self):
         """are there any more lines to process?"""
         return self.nextline != ""
 
-    def _tokenize(self):
+    def tokenize(self):
         """
         Takes the current C-instruction and breaks it down into
         the 3 tokens: dest, comp and jmp
@@ -57,14 +55,15 @@ class Parser:
         """
         # split instruction on '='. We have a lhs if len > 1
         eqsplit = self.instr.split('=')
-        self.desttok = eqsplit[0] if len(eqsplit) > 1 else EMPTYTOK
+        desttok = eqsplit[0] if len(eqsplit) > 1 else EMPTYTOK
 
         # split the rest on ';'
         # comp is always the leftmost.
         # we have a jmp if splitting on ';' yielded a left and right
         scsplit = eqsplit[-1].split(';')
-        self.comptok = scsplit[0]
-        self.jmptok = scsplit[-1] if len(scsplit) > 1 else EMPTYTOK
+        comptok = scsplit[0]
+        jmptok = scsplit[-1] if len(scsplit) > 1 else EMPTYTOK
+        return desttok, comptok, jmptok
 
     def advance(self):
         """advance to the next instruction"""
@@ -80,8 +79,6 @@ class Parser:
             itype = self.instr_type()
             if itype is not InstrType.L:
                 self.instrno += 1
-            if itype is InstrType.C:
-                self._tokenize()
             return self.instr
         else:
             return self.advance()
@@ -206,7 +203,7 @@ def dest2bits(desttok):
     return bits
 
 
-def cinstr(comptok, desttok, jmptok):
+def cinstr(desttok, comptok, jmptok):
     """
     Given the tokens of a C instr, translate to binary
 
@@ -259,7 +256,8 @@ if __name__ == '__main__':
             p.advance()
             itype = p.instr_type()
             if itype is InstrType.C:
-                binout = cinstr(p.comptok, p.desttok, p.jmptok)
+                desttok, comptok, jmptok = p.tokenize()
+                binout = cinstr(desttok, comptok, jmptok)
             elif itype is InstrType.A:
                 binout = ainstr(p.symbol())
             else:
