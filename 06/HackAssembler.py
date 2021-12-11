@@ -22,26 +22,38 @@ class ParserError(Exception):
     pass
 
 
-class Parser:
-    commentpattern = re.compile(r'//.*')
+class Instruction():
+    def __init__(self, instrtxt, instrno):
+        self.txt = instrtxt
+        self.instrno = instrno
 
-    def __init__(self, filename):
-        self.fd = open(filename)  # the file we're assembling
-        self.nextline = self.fd.readline()  # next line to be processed
-        self.instr = None  # The current instruction
-        self.instrno = -1   # The current instruction num. starts at 0
-        self.instrtype = None  # type of current instruction
+        # Is this an A, C, or L instruction?
+        #
+        # A: starts with @
+        # L: labels, (label)
+        # C: everything else: {dest}=comp{;jmp}
+        if self.txt.startswith('@'):
+            self.type = InstrType.A
+        elif self.txt.startswith('('):
+            self.type = InstrType.L
+        else:
+            self.type = InstrType.C
 
-    def reset(self):
-        self.fd.seek(0)
-        self.nextline = self.fd.readline()
-        self.instr = None
-        self.instrno = -1
-        self.instrtype = None
+    def __repr__(self):
+        return self.txt
 
-    def has_next(self):
-        """are there any more lines to process?"""
-        return self.nextline != ""
+    def symbol(self):
+        """
+        if A @xxx return xxx
+        if L (xxx) return xxx
+        """
+        if self.type is InstrType.A:
+            return self.txt[1:]
+        elif self.type is InstrType.L:
+            return self.txt[1:-1]
+        else:
+            msg = f'cannot get symbol for: {self.instr}: not A or L type'
+            raise ParserError(msg)
 
     def tokenize(self):
         """
@@ -59,7 +71,7 @@ class Parser:
         returns: (desttok, comptok, jmptok)
         """
         # split instruction on '='. We have a lhs if len > 1
-        eqsplit = self.instr.split('=')
+        eqsplit = self.txt.split('=')
         desttok = eqsplit[0] if len(eqsplit) > 1 else EMPTYTOK
 
         # split the rest on ';'
@@ -70,52 +82,26 @@ class Parser:
         jmptok = scsplit[-1] if len(scsplit) > 1 else EMPTYTOK
         return desttok, comptok, jmptok
 
-    def advance(self):
-        """advance to the next instruction"""
-        if not self.has_next():
-            return self.instr
 
-        curr = self.nextline
-        self.nextline = self.fd.readline()
+class Parser:
+    re_comment = re.compile(r'//.*')
 
-        # strip comments and whitespace
-        curr = self.commentpattern.sub('', curr).strip()
-        if curr != "":
-            self.instr = curr
-            self.instrtype = self._instrtype()
-            if self.instrtype is not InstrType.L:
-                self.instrno += 1
-            return self.instr
-        else:
-            return self.advance()
+    def __init__(self, asmfname):
+        self.asmfname = asmfname  # the file we're assembling
 
-    def _instrtype(self):
-        """
-        Calc: Is this an A, C, or L instruction?
-
-        A: starts with @
-        L: labels, (label)
-        C: everything else: {dest}=comp{;jmp}
-        """
-        if self.instr.startswith('@'):
-            return InstrType.A
-        elif self.instr.startswith('('):
-            return InstrType.L
-        else:
-            return InstrType.C
-
-    def symbol(self):
-        """
-        if A @xxx return xxx
-        if L (xxx) return xxx
-        """
-        if self.instrtype is InstrType.A:
-            return self.instr[1:]
-        elif self.instrtype is InstrType.L:
-            return self.instr[1:-1]
-        else:
-            msg = f'cannot get symbol for: {self.instr}: not A or L type'
-            raise ParserError(msg)
+    def __iter__(self):
+        instrno = 0   # The current instruction num. starts at 0
+        with open(self.asmfname) as asmfile:
+            line = asmfile.readline()
+            while line != "":
+                # strip comments and whitespace
+                instrtxt = self.re_comment.sub('', line).strip()
+                if instrtxt != "":
+                    instr = Instruction(instrtxt, instrno)
+                    if instr.type is not InstrType.L:
+                        instrno += 1
+                    yield instr
+                line = asmfile.readline()
 
     def close(self):
         self.fd.close()
@@ -241,31 +227,25 @@ def ainstr(symb):
 
 
 if __name__ == '__main__':
-    infilename = sys.argv[1]
-    outfilename = sys.argv[2]
+    asmfname = sys.argv[1]   # input: asm filename
+    hackfname = sys.argv[2]  # output: hack filename
 
-    p = Parser(infilename)
+    p = Parser(asmfname)
 
     # first pass: put labels in symbol table
-    while p.has_next():
-        p.advance()
-        if p.instrtype is InstrType.L:
-            symbols[p.symbol()] = p.instrno + 1
-
-    p.reset()
+    labels = filter(lambda instr: instr.type is InstrType.L, p)
+    for instr in labels:
+        symbols[instr.symbol()] = instr.instrno
 
     # second pass: translate to binary
-    with open(outfilename, 'w') as outfile:
-        while p.has_next():
-            p.advance()
-            if p.instrtype is InstrType.C:
-                desttok, comptok, jmptok = p.tokenize()
+    with open(hackfname, 'w') as hackfile:
+        for instr in p:
+            if instr.type is InstrType.C:
+                desttok, comptok, jmptok = instr.tokenize()
                 binout = cinstr(desttok, comptok, jmptok)
-            elif p.instrtype is InstrType.A:
-                binout = ainstr(p.symbol())
+            elif instr.type is InstrType.A:
+                binout = ainstr(instr.symbol())
             else:
                 continue  # skip labels
-            # print(binout, '<->', p.instr)
-            print(binout, file=outfile)
-
-    p.close()
+            # print(instr.instrno, binout, '<->', instr)
+            print(binout, file=hackfile)
