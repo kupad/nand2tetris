@@ -23,21 +23,10 @@ class ParserError(Exception):
 
 
 class Instruction():
-    def __init__(self, instrtxt, instrno):
+    def __init__(self, instrtxt, instrtype, instrno):
         self.txt = instrtxt
+        self.type = instrtype
         self.instrno = instrno
-
-        # Is this an A, C, or L instruction?
-        #
-        # A: starts with @
-        # L: labels, (label)
-        # C: everything else: {dest}=comp{;jmp}
-        if self.txt.startswith('@'):
-            self.type = InstrType.A
-        elif self.txt.startswith('('):
-            self.type = InstrType.L
-        else:
-            self.type = InstrType.C
 
     def is_ainstr(self):
         return self.type is InstrType.A
@@ -47,9 +36,6 @@ class Instruction():
 
     def is_linstr(self):
         return self.type is InstrType.L
-
-    def __repr__(self):
-        return self.txt
 
     def symbol(self):
         """
@@ -91,6 +77,9 @@ class Instruction():
         jmptok = scsplit[-1] if len(scsplit) > 1 else EMPTYTOK
         return desttok, comptok, jmptok
 
+    def __repr__(self):
+        return self.txt
+
 
 class Parser:
     re_comment = re.compile(r'//.*')
@@ -98,17 +87,33 @@ class Parser:
     def __init__(self, asmfname):
         self.asmfname = asmfname  # the file we're assembling
 
-    def __iter__(self):
-        instrno = 0   # The current instruction num. starts at 0
+    def _calc_type(self, instrtxt):
+        """
+        Is this an A, C, or L instruction?
+
+        A: starts with @
+        L: labels, (label)
+        C: everything else: {dest}=comp{;jmp}
+        """
+        if instrtxt.startswith('@'):
+            return InstrType.A
+        elif instrtxt.startswith('('):
+            return InstrType.L
+        else:
+            return InstrType.C
+
+    def parse(self):
+        instrno = -1   # The current instruction num. starts at 0
         with open(self.asmfname) as asmfile:
             line = asmfile.readline()
             while line != "":
                 # strip comments and whitespace
                 instrtxt = self.re_comment.sub('', line).strip()
                 if instrtxt != "":
-                    instr = Instruction(instrtxt, instrno)
-                    if not instr.is_linstr():
+                    instrtype = self._calc_type(instrtxt)
+                    if instrtype is not InstrType.L:
                         instrno += 1
+                    instr = Instruction(instrtxt, instrtype, instrno)
                     yield instr
                 line = asmfile.readline()
 
@@ -200,18 +205,19 @@ JMPMAP = {
 symbols = SymbolTable()
 
 
-def cinstr(desttok, comptok, jmptok):
+def cinstr2bin(instr):
     """
-    Given the tokens of a C instr, translate to binary
+    Translate a C instr to binary.
 
     111|comp|dest|jmp
     """
+    desttok, comptok, jmptok = instr.tokenize()
     return '111' + COMPMAP[comptok] + dest2bits(desttok) + JMPMAP[jmptok]
 
 
-def ainstr(symb):
+def ainstr2bin(instr):
     """
-    Given the symbol of an A token, translate to binary
+    Translate a C instr translate to binary
 
     given @xxx, op is xxx
 
@@ -219,15 +225,16 @@ def ainstr(symb):
     else find address in symbol table
     return: 0{01}*15
     """
+    symbol = instr.symbol()
     # try to get the symb as a number
     try:
-        asnum = int(symb)
+        asnum = int(symbol)
     except ValueError:
         asnum = None
 
     # if it's a number, that's what we load into A
     # else, we get the val from the symbol table
-    val = asnum if asnum is not None else symbols[symb]
+    val = asnum if asnum is not None else symbols[symbol]
 
     return '0' + format(val, '015b')
 
@@ -239,18 +246,17 @@ if __name__ == '__main__':
     p = Parser(asmfname)
 
     # first pass: put labels in symbol table
-    labels = filter(lambda instr: instr.is_linstr(), p)
+    labels = (instr for instr in p.parse() if instr.is_linstr())
     for instr in labels:
-        symbols[instr.symbol()] = instr.instrno
+        symbols[instr.symbol()] = instr.instrno + 1
 
     # second pass: translate to binary
     with open(hackfname, 'w') as hackfile:
-        for instr in p:
+        for instr in p.parse():
             if instr.is_cinstr():
-                desttok, comptok, jmptok = instr.tokenize()
-                binout = cinstr(desttok, comptok, jmptok)
+                binout = cinstr2bin(instr)
             elif instr.is_ainstr():
-                binout = ainstr(instr.symbol())
+                binout = ainstr2bin(instr)
             else:
                 continue  # skip labels
             # print(instr.instrno, binout, '<->', instr)
