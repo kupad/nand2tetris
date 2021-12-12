@@ -18,8 +18,10 @@ class InstrType(Enum):
 EMPTYTOK = ''
 
 
-class ParserError(Exception):
-    pass
+class AssemblyError(Exception):
+    """
+    Represents an error in the assembly
+    """
 
 
 class Instruction():
@@ -47,8 +49,8 @@ class Instruction():
         elif self.is_linstr():
             return self.txt[1:-1]
         else:
-            msg = f'cannot get symbol for: {self.instr}: not A or L type'
-            raise ParserError(msg)
+            msg = f'cannot get symbol for: {self.txt}: not A or L type'
+            raise AssemblyError(msg)
 
     def tokenize(self):
         """
@@ -87,21 +89,6 @@ class Parser:
     def __init__(self, asmfname):
         self.asmfname = asmfname  # the file we're assembling
 
-    def _calc_type(self, instrtxt):
-        """
-        Is this an A, C, or L instruction?
-
-        A: starts with @
-        L: labels, (label)
-        C: everything else: {dest}=comp{;jmp}
-        """
-        if instrtxt.startswith('@'):
-            return InstrType.A
-        elif instrtxt.startswith('('):
-            return InstrType.L
-        else:
-            return InstrType.C
-
     def parse(self):
         instrno = -1   # The current instruction num. starts at 0
         with open(self.asmfname) as asmfile:
@@ -116,6 +103,21 @@ class Parser:
                     instr = Instruction(instrtxt, instrtype, instrno)
                     yield instr
                 line = asmfile.readline()
+
+    def _calc_type(self, instrtxt):
+        """
+        Is this an A, C, or L instruction?
+
+        A: starts with @
+        L: labels, (label)
+        C: everything else: {dest}=comp{;jmp}
+        """
+        if instrtxt.startswith('@'):
+            return InstrType.A
+        elif instrtxt.startswith('('):
+            return InstrType.L
+        else:
+            return InstrType.C
 
 
 class SymbolTable(UserDict):
@@ -145,98 +147,109 @@ class SymbolTable(UserDict):
         return self.data[key]
 
 
-class CodeError(Exception):
-    pass
+class BinaryGenerator():
+    COMPMAP = {
+        "0":   "0101010",
+        "1":   "0111111",
+        "-1":  "0111010",
+        "D":   "0001100",
+        "A":   "0110000", "M": "1110000",
+        "!D":  "0001101",
+        "!A":  "0110001", "!M": "1110001",
+        "-D":  "0001111",
+        "-A":  "0110011", "-M": "1110011",
+        "D+1": "0011111",
+        "A+1": "0110111", "M+1": "1110111",
+        "D-1": "0001110",
+        "A-1": "0110010", "M-1": "1110010",
+        "D+A": "0000010", "D+M": "1000010",
+        "D-A": "0010011", "D-M": "1010011",
+        "A-D": "0000111", "M-D": "1000111",
+        "D&A": "0000000", "D&M": "1000000",
+        "D|A": "0010101", "D|M": "1010101",
+    }
 
+    JMPMAP = {
+        EMPTYTOK: '000',
+        'JGT': '001',
+        'JEQ': '010',
+        'JGE': '011',
+        'JLT': '100',
+        'JNE': '101',
+        'JLE': '110',
+        'JMP': '111',
+    }
 
-def dest2bits(desttok):
-    """
-    Translates a destination token to binary
+    def instr2bin(self, instr):
+        """
+        Translates an instruction into binary.
+        """
+        if instr.is_ainstr():
+            return self._ainstr2bin(instr)
+        elif instr.is_cinstr():
+            return self._cinstr2bin(instr)
+        else:
+            raise Exception(
+                    f"pseudo-instr cannot be translated to bin {instr}")
 
-    dest contains 3 bits. 0 or indicates the register
-    is being written to.
+    def _dest2bits(self, desttok):
+        """
+        Translates a destination token to binary
 
-    000
-    ADM
+        dest contains 3 bits. 0 or indicates the register
+        is being written to.
 
-    ie: DM -> 011
-    """
-    bits = ''
-    bits += '1' if 'A' in desttok else '0'
-    bits += '1' if 'D' in desttok else '0'
-    bits += '1' if 'M' in desttok else '0'
-    return bits
+        000
+        ADM
 
+        ie: DM -> 011
+        """
+        bits = ''
+        bits += '1' if 'A' in desttok else '0'
+        bits += '1' if 'D' in desttok else '0'
+        bits += '1' if 'M' in desttok else '0'
+        return bits
 
-COMPMAP = {
-    "0":   "0101010",
-    "1":   "0111111",
-    "-1":  "0111010",
-    "D":   "0001100",
-    "A":   "0110000", "M": "1110000",
-    "!D":  "0001101",
-    "!A":  "0110001", "!M": "1110001",
-    "-D":  "0001111",
-    "-A":  "0110011", "-M": "1110011",
-    "D+1": "0011111",
-    "A+1": "0110111", "M+1": "1110111",
-    "D-1": "0001110",
-    "A-1": "0110010", "M-1": "1110010",
-    "D+A": "0000010", "D+M": "1000010",
-    "D-A": "0010011", "D-M": "1010011",
-    "A-D": "0000111", "M-D": "1000111",
-    "D&A": "0000000", "D&M": "1000000",
-    "D|A": "0010101", "D|M": "1010101",
-}
+    def _cinstr2bin(self, instr):
+        """
+        Translate a C instr to binary.
 
-JMPMAP = {
-    EMPTYTOK: '000',
-    'JGT': '001',
-    'JEQ': '010',
-    'JGE': '011',
-    'JLT': '100',
-    'JNE': '101',
-    'JLE': '110',
-    'JMP': '111',
-}
+        111|comp|dest|jmp
+        """
+        desttok, comptok, jmptok = instr.tokenize()
+        return ('111' +
+                self.COMPMAP[comptok] +
+                self._dest2bits(desttok) +
+                self.JMPMAP[jmptok])
+
+    def _ainstr2bin(self, instr):
+        """
+        Translate an A instr translate to binary
+
+        given @xxx, op is xxx
+
+        if xxx is a number: put into the A reg
+        else find address in symbol table
+        return: 0{01}*15
+        """
+        symbol = instr.symbol()
+        # try to get the symb as a number
+        try:
+            num = int(symbol)
+            isnum = True
+        except ValueError:
+            num = None
+            isnum = False
+
+        # if it's a number, that's what we load into A
+        # else, we get the val from the symbol table
+        val = num if isnum else symbols[symbol]
+
+        return '0' + format(val, '015b')
 
 
 # The global symbol table
 symbols = SymbolTable()
-
-
-def cinstr2bin(instr):
-    """
-    Translate a C instr to binary.
-
-    111|comp|dest|jmp
-    """
-    desttok, comptok, jmptok = instr.tokenize()
-    return '111' + COMPMAP[comptok] + dest2bits(desttok) + JMPMAP[jmptok]
-
-
-def ainstr2bin(instr):
-    """
-    Translate a C instr translate to binary
-
-    given @xxx, op is xxx
-
-    if xxx is a number: put into the A reg
-    else find address in symbol table
-    return: 0{01}*15
-    """
-    symbol = instr.symbol()
-    # try to get the symb as a number
-    try:
-        asnum = int(symbol)
-    except ValueError:
-        asnum = None
-
-    # if it's a number, that's what we load into A
-    # else, we get the val from the symbol table
-    val = asnum if asnum is not None else symbols[symbol]
-
-    return '0' + format(val, '015b')
 
 
 if __name__ == '__main__':
@@ -251,13 +264,10 @@ if __name__ == '__main__':
         symbols[instr.symbol()] = instr.instrno + 1
 
     # second pass: translate to binary
+    bingen = BinaryGenerator()
     with open(hackfname, 'w') as hackfile:
-        for instr in p.parse():
-            if instr.is_cinstr():
-                binout = cinstr2bin(instr)
-            elif instr.is_ainstr():
-                binout = ainstr2bin(instr)
-            else:
-                continue  # skip labels
+        binary = ((instr, bingen.instr2bin(instr)) for instr in p.parse()
+                  if not instr.is_linstr())
+        for instr, binout in binary:
             # print(instr.instrno, binout, '<->', instr)
             print(binout, file=hackfile)
