@@ -39,6 +39,15 @@ class Instruction():
         else:
             self.type = InstrType.C
 
+    def is_ainstr(self):
+        return self.type is InstrType.A
+
+    def is_cinstr(self):
+        return self.type is InstrType.C
+
+    def is_linstr(self):
+        return self.type is InstrType.L
+
     def __repr__(self):
         return self.txt
 
@@ -47,9 +56,9 @@ class Instruction():
         if A @xxx return xxx
         if L (xxx) return xxx
         """
-        if self.type is InstrType.A:
+        if self.is_ainstr():
             return self.txt[1:]
-        elif self.type is InstrType.L:
+        elif self.is_linstr():
             return self.txt[1:-1]
         else:
             msg = f'cannot get symbol for: {self.instr}: not A or L type'
@@ -98,13 +107,10 @@ class Parser:
                 instrtxt = self.re_comment.sub('', line).strip()
                 if instrtxt != "":
                     instr = Instruction(instrtxt, instrno)
-                    if instr.type is not InstrType.L:
+                    if not instr.is_linstr():
                         instrno += 1
                     yield instr
                 line = asmfile.readline()
-
-    def close(self):
-        self.fd.close()
 
 
 class SymbolTable(UserDict):
@@ -233,17 +239,17 @@ if __name__ == '__main__':
     p = Parser(asmfname)
 
     # first pass: put labels in symbol table
-    labels = filter(lambda instr: instr.type is InstrType.L, p)
+    labels = filter(lambda instr: instr.is_linstr(), p)
     for instr in labels:
         symbols[instr.symbol()] = instr.instrno
 
     # second pass: translate to binary
     with open(hackfname, 'w') as hackfile:
         for instr in p:
-            if instr.type is InstrType.C:
+            if instr.is_cinstr():
                 desttok, comptok, jmptok = instr.tokenize()
                 binout = cinstr(desttok, comptok, jmptok)
-            elif instr.type is InstrType.A:
+            elif instr.is_ainstr():
                 binout = ainstr(instr.symbol())
             else:
                 continue  # skip labels
