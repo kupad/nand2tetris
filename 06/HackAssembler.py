@@ -147,105 +147,107 @@ class SymbolTable(UserDict):
         return self.data[key]
 
 
-class BinaryGenerator():
-    COMPMAP = {
-        "0":   "0101010",
-        "1":   "0111111",
-        "-1":  "0111010",
-        "D":   "0001100",
-        "A":   "0110000", "M": "1110000",
-        "!D":  "0001101",
-        "!A":  "0110001", "!M": "1110001",
-        "-D":  "0001111",
-        "-A":  "0110011", "-M": "1110011",
-        "D+1": "0011111",
-        "A+1": "0110111", "M+1": "1110111",
-        "D-1": "0001110",
-        "A-1": "0110010", "M-1": "1110010",
-        "D+A": "0000010", "D+M": "1000010",
-        "D-A": "0010011", "D-M": "1010011",
-        "A-D": "0000111", "M-D": "1000111",
-        "D&A": "0000000", "D&M": "1000000",
-        "D|A": "0010101", "D|M": "1010101",
-    }
+COMPMAP = {
+    "0":   "0101010",
+    "1":   "0111111",
+    "-1":  "0111010",
+    "D":   "0001100",
+    "A":   "0110000", "M": "1110000",
+    "!D":  "0001101",
+    "!A":  "0110001", "!M": "1110001",
+    "-D":  "0001111",
+    "-A":  "0110011", "-M": "1110011",
+    "D+1": "0011111",
+    "A+1": "0110111", "M+1": "1110111",
+    "D-1": "0001110",
+    "A-1": "0110010", "M-1": "1110010",
+    "D+A": "0000010", "D+M": "1000010",
+    "D-A": "0010011", "D-M": "1010011",
+    "A-D": "0000111", "M-D": "1000111",
+    "D&A": "0000000", "D&M": "1000000",
+    "D|A": "0010101", "D|M": "1010101",
+}
 
-    JMPMAP = {
-        EMPTYTOK: '000',
-        'JGT': '001',
-        'JEQ': '010',
-        'JGE': '011',
-        'JLT': '100',
-        'JNE': '101',
-        'JLE': '110',
-        'JMP': '111',
-    }
+JMPMAP = {
+    EMPTYTOK: '000',
+    'JGT': '001',
+    'JEQ': '010',
+    'JGE': '011',
+    'JLT': '100',
+    'JNE': '101',
+    'JLE': '110',
+    'JMP': '111',
+}
 
-    def instr2bin(self, instr):
-        """
-        Translates an instruction into binary.
-        """
-        if instr.is_ainstr():
-            return self._ainstr2bin(instr)
-        elif instr.is_cinstr():
-            return self._cinstr2bin(instr)
-        else:
-            raise Exception(
-                    f"pseudo-instr cannot be translated to bin {instr}")
+def _dest2bits(desttok):
+    """
+    Translates a destination token to binary
 
-    def _dest2bits(self, desttok):
-        """
-        Translates a destination token to binary
+    dest contains 3 bits. 0 or indicates the register
+    is being written to.
 
-        dest contains 3 bits. 0 or indicates the register
-        is being written to.
+    000
+    ADM
 
-        000
-        ADM
+    ie: DM -> 011
+    """
+    bits = ''
+    bits += '1' if 'A' in desttok else '0'
+    bits += '1' if 'D' in desttok else '0'
+    bits += '1' if 'M' in desttok else '0'
+    return bits
 
-        ie: DM -> 011
-        """
-        bits = ''
-        bits += '1' if 'A' in desttok else '0'
-        bits += '1' if 'D' in desttok else '0'
-        bits += '1' if 'M' in desttok else '0'
-        return bits
 
-    def _cinstr2bin(self, instr):
-        """
-        Translate a C instr to binary.
+def _cinstr2bin(instr):
+    """
+    Translate a C instr to binary.
 
-        111|comp|dest|jmp
-        """
-        desttok, comptok, jmptok = instr.tokenize()
-        return ('111' +
-                self.COMPMAP[comptok] +
-                self._dest2bits(desttok) +
-                self.JMPMAP[jmptok])
+    111|comp|dest|jmp
+    """
+    desttok, comptok, jmptok = instr.tokenize()
+    return ('111' +
+            COMPMAP[comptok] +
+            _dest2bits(desttok) +
+            JMPMAP[jmptok])
 
-    def _ainstr2bin(self, instr):
-        """
-        Translate an A instr translate to binary
 
-        given @xxx, op is xxx
+def _ainstr2bin(instr):
+    """
+    Translate an A instr translate to binary
 
-        if xxx is a number: put into the A reg
-        else find address in symbol table
-        return: 0{01}*15
-        """
-        symbol = instr.symbol()
-        # try to get the symb as a number
-        try:
-            num = int(symbol)
-            isnum = True
-        except ValueError:
-            num = None
-            isnum = False
+    given @xxx, op is xxx
 
-        # if it's a number, that's what we load into A
-        # else, we get the val from the symbol table
-        val = num if isnum else symbols[symbol]
+    if xxx is a number: put into the A reg
+    else find address in symbol table
+    return: 0{01}*15
+    """
+    symbol = instr.symbol()
+    # try to get the symb as a number
+    try:
+        num = int(symbol)
+        isnum = True
+    except ValueError:
+        num = None
+        isnum = False
 
-        return '0' + format(val, '015b')
+    # if it's a number, that's what we load into A
+    # else, we get the val from the symbol table
+    val = num if isnum else symbols[symbol]
+
+    return '0' + format(val, '015b')
+
+
+def instr2bin(instr):
+    """
+    Translates an instruction into binary.
+    """
+    if instr.is_ainstr():
+        return _ainstr2bin(instr)
+    elif instr.is_cinstr():
+        return _cinstr2bin(instr)
+    else:
+        raise Exception(
+                f"pseudo-instr cannot be translated to bin {instr}")
 
 
 # The global symbol table
@@ -264,10 +266,10 @@ if __name__ == '__main__':
         symbols[instr.symbol()] = instr.instrno + 1
 
     # second pass: translate to binary
-    bingen = BinaryGenerator()
+    binary = ((instr, instr2bin(instr)) for instr in p.parse()
+              if not instr.is_linstr())
+
     with open(hackfname, 'w') as hackfile:
-        binary = ((instr, bingen.instr2bin(instr)) for instr in p.parse()
-                  if not instr.is_linstr())
         for instr, binout in binary:
             # print(instr.instrno, binout, '<->', instr)
             print(binout, file=hackfile)
