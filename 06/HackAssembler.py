@@ -3,7 +3,7 @@
 
 import sys
 import re
-from collections import UserDict
+from collections import defaultdict
 from enum import Enum, auto
 
 
@@ -120,33 +120,42 @@ class Parser:
             return InstrType.C
 
 
-class SymbolTable(UserDict):
+def create_symbtbl():
     """
-    The symbol table is a dictionary.
+    Create the symbol table.
 
-    When encountering a symbol for the first time
-    the symbol is entered in the table with nextmem as
-    the value. Then nextmem is incremented.
+    Symbol Table is a dictionary of symbol -> memory address.
+    When looking up a unknown symbol, the next available memory
+    address will be the value
     """
-    def __init__(self):
-        super().__init__({
-            'R0': 0, 'R1': 1, 'R2': 2, 'R3': 3,
-            'R4': 4, 'R5': 5, 'R6': 6, 'R7': 7,
-            'R8': 8, 'R9': 9, 'R10': 10, 'R11': 11,
-            'R12': 12, 'R13': 13, 'R14': 14, 'R15': 15,
-            'SP': 0, 'LCL': 1, 'ARG': 2, 'THIS': 3, 'THAT': 4,
-            'SCREEN': 16384, 'KBD': 24576,
-        })
-        # first available memory address is 16 (R0-R15 defined)
-        self.nextmem = 16
+    # next available memory address for symbol table
+    # starts at 16 (R0-R15 defined)
+    nextaddr = 16
 
-    def __getitem__(self, key):
-        if key not in self.data:
-            self.data[key] = self.nextmem
-            self.nextmem += 1
-        return self.data[key]
+    def getnextaddr():
+        """
+        Returns next avail memory address and increments it.
+        """
+        nonlocal nextaddr
+        addr = nextaddr
+        nextaddr += 1
+        return addr
+
+    return defaultdict(getnextaddr, {
+        'R0': 0, 'R1': 1, 'R2': 2, 'R3': 3,
+        'R4': 4, 'R5': 5, 'R6': 6, 'R7': 7,
+        'R8': 8, 'R9': 9, 'R10': 10, 'R11': 11,
+        'R12': 12, 'R13': 13, 'R14': 14, 'R15': 15,
+        'SP': 0, 'LCL': 1, 'ARG': 2, 'THIS': 3, 'THAT': 4,
+        'SCREEN': 16384, 'KBD': 24576,
+    })
 
 
+# Symbol Table
+symbtbl = create_symbtbl()
+
+
+# maps a computation (ie D+1,D&M) -> binary
 COMPMAP = {
     "0":   "0101010",
     "1":   "0111111",
@@ -168,6 +177,7 @@ COMPMAP = {
     "D|A": "0010101", "D|M": "1010101",
 }
 
+# maps a jmp (ie JEQ, JMP) -> binary
 JMPMAP = {
     EMPTYTOK: '000',
     'JGT': '001',
@@ -179,7 +189,8 @@ JMPMAP = {
     'JMP': '111',
 }
 
-def _dest2bits(desttok):
+
+def dest2bits(desttok):
     """
     Translates a destination token to binary
 
@@ -198,7 +209,7 @@ def _dest2bits(desttok):
     return bits
 
 
-def _cinstr2bin(instr):
+def cinstr2bin(instr):
     """
     Translate a C instr to binary.
 
@@ -207,11 +218,11 @@ def _cinstr2bin(instr):
     desttok, comptok, jmptok = instr.tokenize()
     return ('111' +
             COMPMAP[comptok] +
-            _dest2bits(desttok) +
+            dest2bits(desttok) +
             JMPMAP[jmptok])
 
 
-def _ainstr2bin(instr):
+def ainstr2bin(instr):
     """
     Translate an A instr translate to binary
 
@@ -232,7 +243,7 @@ def _ainstr2bin(instr):
 
     # if it's a number, that's what we load into A
     # else, we get the val from the symbol table
-    val = num if isnum else symbols[symbol]
+    val = num if isnum else symbtbl[symbol]
 
     return '0' + format(val, '015b')
 
@@ -242,16 +253,12 @@ def instr2bin(instr):
     Translates an instruction into binary.
     """
     if instr.is_ainstr():
-        return _ainstr2bin(instr)
+        return ainstr2bin(instr)
     elif instr.is_cinstr():
-        return _cinstr2bin(instr)
+        return cinstr2bin(instr)
     else:
         raise Exception(
                 f"pseudo-instr cannot be translated to bin {instr}")
-
-
-# The global symbol table
-symbols = SymbolTable()
 
 
 if __name__ == '__main__':
@@ -262,8 +269,8 @@ if __name__ == '__main__':
 
     # first pass: put labels in symbol table
     labels = (instr for instr in p.parse() if instr.is_linstr())
-    for instr in labels:
-        symbols[instr.symbol()] = instr.instrno + 1
+    for label in labels:
+        symbtbl[label.symbol()] = label.instrno + 1
 
     # second pass: translate to binary
     binary = ((instr, instr2bin(instr)) for instr in p.parse()
