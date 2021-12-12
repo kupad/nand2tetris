@@ -210,15 +210,16 @@ def comp2bits(comptok, lineno):
 
 def dest2bits(desttok, lineno):
     """
-    Translates a destination token to binary
+    Translates a destination token to binary.
 
-    dest contains 3 bits. 0 or indicates the register
-    is being written to.
+    dest contains 3 bits. Each bit represents a dest:
+        bits: 000
+        dest: ADM
 
-    000
-    ADM
+    1 mans the dest is being written to:
+        DM -> 011
 
-    ie: DM -> 011
+    DM and MD are both acceptable and are equivalent
     """
     bits = ['0']*3
     for dest in desttok:
@@ -247,10 +248,11 @@ def cinstr2bin(instr):
     111|comp|dest|jmp
     """
     desttok, comptok, jmptok = instr.tokenize()
+    lineno = instr.lineno
     return ('111' +
-            comp2bits(comptok, instr.lineno) +
-            dest2bits(desttok, instr.lineno) +
-            jmp2bits(jmptok, instr.lineno))
+            comp2bits(comptok, lineno) +
+            dest2bits(desttok, lineno) +
+            jmp2bits(jmptok, lineno))
 
 
 def ainstr2bin(instr):
@@ -318,4 +320,3 @@ if __name__ == '__main__':
         main()
     except AssemblyError as e:
         sys.exit(e)
-
