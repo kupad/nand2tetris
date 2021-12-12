@@ -20,15 +20,22 @@ EMPTYTOK = ''
 
 class AssemblyError(Exception):
     """
-    Represents an error in the assembly
+    Represents an error in the assembly code.
     """
+    def __init__(self, msg, lineno):
+        super().__init__(msg)
+        self.lineno = lineno
+
+    def __str__(self):
+        return f'Error: line {self.lineno}: {super().__str__()}'
 
 
 class Instruction():
-    def __init__(self, instrtxt, instrtype, instrno):
+    def __init__(self, instrtxt, instrtype, instrno, lineno):
         self.txt = instrtxt
         self.type = instrtype
         self.instrno = instrno
+        self.lineno = lineno
 
     def is_ainstr(self):
         return self.type is InstrType.A
@@ -49,14 +56,13 @@ class Instruction():
         elif self.is_linstr():
             return self.txt[1:-1]
         else:
-            msg = f'cannot get symbol for: {self.txt}: not A or L type'
-            raise AssemblyError(msg)
+            raise Exception(
+                    f'cannot get symbol for: {self.txt}: not A or L type')
 
     def tokenize(self):
         """
         Takes the current C-instruction and breaks it down into
-        the 3 tokens: dest, comp and jmp
-        dest and jmp can be empty, only comp is mandatory
+        the 3 tokens: dest, comp and jmp.
 
         Anatomy HACK C assembly instr:
             dest=comp;JMP
@@ -64,6 +70,8 @@ class Instruction():
             dest: D,M,A,DM,DA...
             comp: D+1, D&M, ...
             jmp: JGE/JMP/JEQ/...
+
+        Only comp is mandatory
 
         returns: (desttok, comptok, jmptok)
         """
@@ -91,8 +99,10 @@ class Parser:
 
     def parse(self):
         instrno = -1   # The current instruction num. starts at 0
+        lineno = 0  # The current line number. starts at 1
         with open(self.asmfname) as asmfile:
             line = asmfile.readline()
+            lineno += 1
             while line != "":
                 # strip comments and whitespace
                 instrtxt = self.re_comment.sub('', line).strip()
@@ -100,9 +110,10 @@ class Parser:
                     instrtype = self._calc_type(instrtxt)
                     if instrtype is not InstrType.L:
                         instrno += 1
-                    instr = Instruction(instrtxt, instrtype, instrno)
+                    instr = Instruction(instrtxt, instrtype, instrno, lineno)
                     yield instr
                 line = asmfile.readline()
+                lineno += 1
 
     def _calc_type(self, instrtxt):
         """
@@ -125,7 +136,7 @@ def create_symbtbl():
     Create the symbol table.
 
     Symbol Table is a dictionary of symbol -> memory address.
-    When looking up a unknown symbol, the next available memory
+    When looking up an unknown symbol, the next available memory
     address will be the value
     """
     # next available memory address for symbol table
@@ -190,7 +201,14 @@ JMPMAP = {
 }
 
 
-def dest2bits(desttok):
+def comp2bits(comptok, lineno):
+    try:
+        return COMPMAP[comptok]
+    except KeyError:
+        raise AssemblyError(f'unknown comp: {comptok}', lineno)
+
+
+def dest2bits(desttok, lineno):
     """
     Translates a destination token to binary
 
@@ -202,11 +220,24 @@ def dest2bits(desttok):
 
     ie: DM -> 011
     """
-    bits = ''
-    bits += '1' if 'A' in desttok else '0'
-    bits += '1' if 'D' in desttok else '0'
-    bits += '1' if 'M' in desttok else '0'
-    return bits
+    bits = ['0']*3
+    for dest in desttok:
+        if dest == 'A':
+            bits[2] = '1'
+        elif dest == 'D':
+            bits[1] = '1'
+        elif dest == 'M':
+            bits[0] = '1'
+        else:
+            raise AssemblyError(f'unknown dest: {dest}', lineno)
+    return ''.join(bits)
+
+
+def jmp2bits(jmptok, lineno):
+    try:
+        return JMPMAP[jmptok]
+    except KeyError:
+        raise AssemblyError(f'unknown jmp: {jmptok}', lineno)
 
 
 def cinstr2bin(instr):
@@ -217,9 +248,9 @@ def cinstr2bin(instr):
     """
     desttok, comptok, jmptok = instr.tokenize()
     return ('111' +
-            COMPMAP[comptok] +
-            dest2bits(desttok) +
-            JMPMAP[jmptok])
+            comp2bits(comptok, instr.lineno) +
+            dest2bits(desttok, instr.lineno) +
+            jmp2bits(jmptok, instr.lineno))
 
 
 def ainstr2bin(instr):
@@ -261,7 +292,7 @@ def instr2bin(instr):
                 f"pseudo-instr cannot be translated to bin {instr}")
 
 
-if __name__ == '__main__':
+def main():
     asmfname = sys.argv[1]   # input: asm filename
     hackfname = sys.argv[2]  # output: hack filename
 
@@ -280,3 +311,11 @@ if __name__ == '__main__':
         for instr, binout in binary:
             # print(instr.instrno, binout, '<->', instr)
             print(binout, file=hackfile)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except AssemblyError as e:
+        sys.exit(e)
+
