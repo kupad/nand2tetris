@@ -176,6 +176,18 @@ def create_symbtbl():
 symbtbl = create_symbtbl()
 
 
+# maps a destination register to a bit idx
+# dest part of the instruction contains 3 bits.
+# Each bit represents a dest:
+#        bits: 000
+#        dest: ADM
+# 1 means the register is a destination
+DESTMAP = {
+    'A': 0,
+    'D': 1,
+    'M': 2,
+}
+
 # maps a computation (ie D+1,D&M) -> binary
 COMPMAP = {
     "0":   "0101010",
@@ -222,24 +234,14 @@ def dest2bits(desttok, lineno):
     """
     Translates a destination token to binary.
 
-    dest contains 3 bits. Each bit represents a dest:
-        bits: 000
-        dest: ADM
-
-    1 mans the dest is being written to:
-        DM -> 011
-
-    DM and MD are both acceptable and are equivalent
+    Look up each register in the desttok in DESTMAP to find bit index.
+    Note that: DM and MD are both acceptable and are equivalent
     """
     bits = ['0']*3
     for dest in desttok:
-        if dest == 'A':
-            bits[0] = '1'
-        elif dest == 'D':
-            bits[1] = '1'
-        elif dest == 'M':
-            bits[2] = '1'
-        else:
+        try:
+            bits[DESTMAP[dest]] = '1'
+        except KeyError:
             raise AssemblyError(f'unknown dest: {dest}', lineno)
     return ''.join(bits)
 
