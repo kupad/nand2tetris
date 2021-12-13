@@ -1,4 +1,15 @@
 #!/usr/bin/python3
+"""
+Nand2Tetris Hack Assembler. Week 6 project.
+
+input: Hack Assembly
+output: hack binary instructions
+
+USAGE:
+./HackAssembler.py input.asm output.hack
+
+Author: Phil Dreizen
+"""
 
 
 import sys
@@ -98,6 +109,9 @@ class Parser:
         self.asmfname = asmfname  # the file we're assembling
 
     def parse(self):
+        """
+        Parse the asm file. Generates a single instuction at a time.
+        """
         instrno = -1   # The current instruction num. starts at 0
         lineno = 0  # The current line number. starts at 1
         with open(self.asmfname) as asmfile:
@@ -117,7 +131,7 @@ class Parser:
 
     def _calc_type(self, instrtxt):
         """
-        Is this an A, C, or L instruction?
+        Determine if this text represents an A, C, or L instruction.
 
         A: starts with @
         L: labels, (label)
@@ -295,6 +309,9 @@ def instr2bin(instr):
 
 
 def main():
+    if len(sys.argv) < 3:
+        sys.exit("USAGE: HackAssembler.py input.asm output.hack")
+
     asmfname = sys.argv[1]   # input: asm filename
     hackfname = sys.argv[2]  # output: hack filename
 
