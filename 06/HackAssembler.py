@@ -236,6 +236,7 @@ def dest2bits(desttok, lineno):
 
     Look up each register in the desttok in DESTMAP to find bit index.
     Note that: DM and MD are both acceptable and are equivalent
+    Note: this implementation makes something like DDD legal
     """
     bits = ['0']*3
     for dest in desttok:
