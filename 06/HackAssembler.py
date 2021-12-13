@@ -238,11 +238,11 @@ def dest2bits(desttok, lineno):
     bits = ['0']*3
     for dest in desttok:
         if dest == 'A':
-            bits[2] = '1'
+            bits[0] = '1'
         elif dest == 'D':
             bits[1] = '1'
         elif dest == 'M':
-            bits[0] = '1'
+            bits[2] = '1'
         else:
             raise AssemblyError(f'unknown dest: {dest}', lineno)
     return ''.join(bits)
@@ -323,13 +323,12 @@ def main():
         symbtbl[label.symbol()] = label.instrno + 1
 
     # second pass: translate to binary
-    binary = ((instr, instr2bin(instr)) for instr in p.parse()
+    binary = (instr2bin(instr) for instr in p.parse()
               if not instr.is_linstr())
 
     with open(hackfname, 'w') as hackfile:
-        for instr, binout in binary:
-            # print(instr.instrno, binout, '<->', instr)
-            print(binout, file=hackfile)
+        for bininstr in binary:
+            print(bininstr, file=hackfile)
 
 
 if __name__ == '__main__':
