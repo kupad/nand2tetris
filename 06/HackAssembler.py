@@ -102,47 +102,43 @@ class Instruction():
         return self.txt
 
 
-class Parser:
-    re_comment = re.compile(r'//.*')
+RE_COMMENT = re.compile(r'//.*')
 
-    def __init__(self, asmfname):
-        self.asmfname = asmfname  # the file we're assembling
 
-    def parse(self):
-        """
-        Parse the asm file. Generates a single instuction at a time.
-        """
-        instrno = -1   # The current instruction num. starts at 0
-        lineno = 0  # The current line number. starts at 1
-        with open(self.asmfname) as asmfile:
-            line = asmfile.readline()
-            lineno += 1
-            while line != "":
-                # strip comments and whitespace
-                instrtxt = self.re_comment.sub('', line).strip()
-                if instrtxt != "":
-                    instrtype = self._calc_type(instrtxt)
-                    if instrtype is not InstrType.L:
-                        instrno += 1
-                    instr = Instruction(instrtxt, instrtype, instrno, lineno)
-                    yield instr
-                line = asmfile.readline()
-                lineno += 1
+def parse(asmfname):
+    """
+    Parse the asm file. Generates a single instuction at a time.
 
-    def _calc_type(self, instrtxt):
-        """
-        Determine if this text represents an A, C, or L instruction.
+    Advance through the file one line at a time ignoring comments.
+    Uses a generator to yield an Instruction object when an instruction
+    is found
+    """
+    instrno = -1   # The current instruction num. starts at 0
+    with open(asmfname) as asmfile:
+        for lineno, line in enumerate(asmfile, 1):
+            # strip comments and whitespace
+            instrtxt = RE_COMMENT.sub('', line).strip()
+            if instrtxt == "":
+                continue
 
-        A: starts with @
-        L: labels, (label)
-        C: everything else: {dest}=comp{;jmp}
-        """
-        if instrtxt.startswith('@'):
-            return InstrType.A
-        elif instrtxt.startswith('('):
-            return InstrType.L
-        else:
-            return InstrType.C
+            # Determine if this text represents an A, C, or L instruction.
+            # A: starts with @
+            # L: labels, (label)
+            # C: everything else: {dest}=comp{;jmp}
+            if instrtxt.startswith('@'):
+                instrtype = InstrType.A
+            elif instrtxt.startswith('('):
+                instrtype = InstrType.L
+            else:
+                instrtype = InstrType.C
+
+            # labels do not increment instrno
+            if instrtype is not InstrType.L:
+                instrno += 1
+
+            # create instr and return
+            instr = Instruction(instrtxt, instrtype, instrno, lineno)
+            yield instr
 
 
 def create_symbtbl():
@@ -315,15 +311,13 @@ def main():
     asmfname = sys.argv[1]   # input: asm filename
     hackfname = sys.argv[2]  # output: hack filename
 
-    p = Parser(asmfname)
-
     # first pass: put labels in symbol table
-    labels = (instr for instr in p.parse() if instr.is_linstr())
+    labels = (instr for instr in parse(asmfname) if instr.is_linstr())
     for label in labels:
         symbtbl[label.symbol()] = label.instrno + 1
 
     # second pass: translate to binary
-    binary = (instr2bin(instr) for instr in p.parse()
+    binary = (instr2bin(instr) for instr in parse(asmfname)
               if not instr.is_linstr())
 
     with open(hackfname, 'w') as hackfile:
