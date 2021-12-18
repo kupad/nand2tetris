@@ -149,10 +149,10 @@ move comp value into whatever @SP is currently pointing to
 asm_mov_derefsp = partial(asm_mov_derefptr, SP)
 
 
-def asm_push(source='D'):
-    """push the value in the source reg onto the stack"""
+def asm_push(comp='D'):
+    """push the comp in the source reg onto the stack"""
     return [
-        *asm_mov_derefsp(source),
+        *asm_mov_derefsp(comp),
         *asm_inc_sp(),
     ]
 
@@ -183,25 +183,25 @@ def stacktoasm(cmd):
     ]
 
     if cmd.is_push():
-        asm += asm_push()
+        asm += asm_push(D)
     else:
-        asm += asm_pop()
+        asm += asm_pop(D)
 
     return asm
 
 
-def asm_2op(preamble, opdesc, op):
+def asm_2op(preamble, opcmt, opinstr):
     """2 op with no comparison"""
     asm = [
         preamble,
         '//D <- pop op2',
-        *asm_pop(),
+        *asm_pop(D),
 
-        '//dec sp (M becomes op1)',
+        '//pop op1',
         *asm_pop(dest=None),
 
-        opdesc,
-        op,
+        opcmt,
+        opinstr,
 
         '//inc stack',
         *asm_inc_sp(),
@@ -210,31 +210,31 @@ def asm_2op(preamble, opdesc, op):
 
 
 def addtoasm(cmd):
-    preamble = '//add'
-    opdesc = '//M <- op1(M) + op2(D)'
-    op = 'M=D+M'
-    return asm_2op(preamble, opdesc, op)
+    return asm_2op(
+        '//add',
+        '//M <- op1(M) + op2(D)',
+        'M=D+M')
 
 
 def subtoasm(cmd):
-    preamble = '//sub'
-    opdesc = '//M <- op1(M) - op2(D)'
-    op = 'M=M-D'
-    return asm_2op(preamble, opdesc, op)
+    return asm_2op(
+        '//sub',
+        '//M <- op1(M) - op2(D)',
+        'M=M-D')
 
 
 def andtoasm(cmd):
-    preamble = '//and'
-    opdesc = '//M <- op1(M) & op2(D)'
-    op = 'M=D&M'
-    return asm_2op(preamble, opdesc, op)
+    return asm_2op(
+        '//and',
+        '//M <- op1(M) & op2(D)',
+        'M=D&M')
 
 
 def ortoasm(cmd):
-    preamble = '//or'
-    opdesc = '//M <- op1(M) | op2(D)'
-    op = 'M=D|M'
-    return asm_2op(preamble, opdesc, op)
+    return asm_2op(
+        '//or',
+        '//M <- op1(M) | op2(D)',
+        'M=D|M')
 
 
 def negtoasm(cmd):
@@ -269,7 +269,7 @@ def nottoasm(cmd):
     return asm
 
 
-labelno = 0
+labelno = 1
 
 
 def genlabel():
