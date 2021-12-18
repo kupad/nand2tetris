@@ -191,7 +191,7 @@ def stacktoasm(cmd):
     return asm
 
 
-def asm_arith2op(op, precmt=''):
+def arith2op(op, precmt=''):
     """
     Pop top 2 values from stack. Perform operation on it.
     Then push result on stack.
@@ -219,7 +219,7 @@ def asm_arith2op(op, precmt=''):
     return asm
 
 
-def asm_arith1op(op, precmt=''):
+def arith1op(op, precmt=''):
     """
     Pop top value from stack. Perform operation on it.
     Then push result back on stack.
@@ -276,62 +276,18 @@ def asm_ifelse(cmpinstr, iftrue, iffalse):
     return asm
 
 
-def eqtoasm(cmd):
+def arithcmp(jmp, precmt=''):
     asm = [
-        '//eq',
+        precmt,
         '//D <- pop op2',
         *asm_pop(D),
 
-        '//dec sp (M becomes op1)',
+        '//pop op1. M == op1',
         *asm_pop(None),
 
         'MD=M-D',
         *asm_ifelse(
-            'D;JEQ',
-            asm_mov_derefsp(TRUE),
-            asm_mov_derefsp(FALSE)),
-
-        '//inc stack',
-        *asm_inc_sp(),
-    ]
-    return asm
-
-
-def lttoasm(cmd):
-    asm = [
-        '//lt',
-        '//D <- pop op2',
-        *asm_pop(D),
-
-        '//dec sp (M becomes op1)',
-        # leaves D with previous val
-        *asm_pop(None),
-
-        'MD=M-D',
-        *asm_ifelse(
-            'D;JLT',
-            asm_mov_derefsp(TRUE),
-            asm_mov_derefsp(FALSE)),
-
-        '//inc stack',
-        *asm_inc_sp(),
-    ]
-    return asm
-
-
-def gttoasm(cmd):
-    asm = [
-        '//gt',
-        '//D <- pop op2',
-        *asm_pop(D),
-
-        '//dec sp (M becomes op1)',
-        # leaves D with previous val
-        *asm_pop(None),
-
-        'MD=M-D',
-        *asm_ifelse(
-            'D;JGT',
+            f'D;{jmp}',
             asm_mov_derefsp(TRUE),
             asm_mov_derefsp(FALSE)),
 
@@ -344,23 +300,23 @@ def gttoasm(cmd):
 def arithtoasm(cmd):
     op = cmd.txt
     if op == 'add':
-        return asm_arith2op('+', '//add')
+        return arith2op('+', '//add')
     elif op == 'sub':
-        return asm_arith2op('-', '//sub')
+        return arith2op('-', '//sub')
     elif op == 'and':
-        return asm_arith2op('&', '//and')
+        return arith2op('&', '//and')
     elif op == 'or':
-        return asm_arith2op('|', '//or')
+        return arith2op('|', '//or')
     elif op == 'neg':
-        return asm_arith1op('-', '//arith neg (-)')
+        return arith1op('-', '//arith neg (-)')
     elif op == 'not':
-        return asm_arith1op('!', '//logic bitwise not (!)')
+        return arith1op('!', '//logic bitwise not (!)')
     elif op == 'eq':
-        return eqtoasm(cmd)
+        return arithcmp('JEQ', '//eq')
     elif op == 'lt':
-        return lttoasm(cmd)
+        return arithcmp('JLT', '//lt')
     elif op == 'gt':
-        return gttoasm(cmd)
+        return arithcmp('JGT', '//gt')
     else:
         print('UNKNOWN', cmd)
         return []
