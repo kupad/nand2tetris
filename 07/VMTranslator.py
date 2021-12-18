@@ -22,6 +22,14 @@ class CmdType(Enum):
     POP = auto()
 
 
+# prefined registers and symbols
+A = 'A'
+D = 'D'
+M = 'M'
+SP = '@SP'
+TMP0 = R13 = '@R13'
+
+
 class VMError(Exception):
     """
     Represents an error in the VM code.
@@ -97,33 +105,34 @@ def parse(vmfname):
             yield cmd
 
 
-TMP0 = '@R13'
-
-
 def asm_inc_sp():
-    asm = '@SP\n'
-    asm += 'M=M+1\n'
+    asm = [
+        '@SP',
+        'M=M+1',
+    ]
     return asm
 
 
 def asm_push(source='D'):
     """push the value in the source reg onto the stack"""
-    asm = ''
-    asm += '@SP\n'
-    asm += 'A=M\n'
-    asm += 'M='+source+'\n'
+    asm = [
+        '@SP',
+        'A=M',
+        'M='+source,
+    ]
     asm += asm_inc_sp()
     return asm
 
 
 def asm_pop(dest='D'):
     """pop the value off stack into dest reg"""
-    asm = ''
-    asm = '@SP\n'
-    asm += 'M=M-1\n'
-    asm += 'A=M\n'
+    asm = [
+        '@SP',
+        'M=M-1',
+        'A=M',
+    ]
     if dest:
-        asm += dest+'=M\n'
+        asm.append(dest+'=M')
     return asm
 
 
@@ -132,24 +141,25 @@ def asm_load(destmem, source='D'):
     destmem: a memory location
     source: a register
     """
-    asm = destmem+'\n'
-    asm += 'M='+source+'\n'
+    asm = [
+        destmem,
+        'M='+source,
+    ]
     return asm
 
 
-def write_stack(cmd):
+def stacktoasm(cmd):
     segment = cmd.arg1
     value = cmd.arg2
-    asm = ''
 
-    # gen comment
-    asm += '//'
-    asm += 'push ' if cmd.is_push() else 'pop '
-    asm += segment+' '+value+'\n'
+    asm = [
+        # gen comment
+        '//'+'push ' if cmd.is_push() else 'pop '+segment+' '+value,
 
-    # assuming segment is constant...
-    asm += '@'+value+'\n'
-    asm += 'D=A\n'
+        # assuming segment is constant...
+        '@'+value,
+        'D=A',
+    ]
 
     if cmd.is_push():
         asm += asm_push()
@@ -159,39 +169,45 @@ def write_stack(cmd):
     return asm
 
 
-def write_arithmetic(cmd):
+def arithtoasm(cmd):
     op = cmd.txt
-    asm = ''
     if op == 'add':
-        asm += '//add\n'
-        asm += '//D <- pop op2\n'
-        asm += asm_pop()
+        asm = [
+            '//add',
 
-        asm += '//dec sp (M becomes op1)\n'
-        asm += asm_pop(dest=None)
+            '//D <- pop op2i',
+            *asm_pop(),
 
-        asm += '//M <- op1(M) + op2(D)\n'
-        asm += 'M=D+M\n'
+            '//dec sp (M becomes op1)',
+            *asm_pop(dest=None),
 
-        asm += '//inc stack\n'
-        asm += asm_inc_sp()
+            '//M <- op1(M) + op2(D)',
+            'M=D+M',
+
+            '//inc stack',
+            *asm_inc_sp(),
+        ]
         return asm
     else:
-        return ''
+        return []
 
 
-def write_asm(cmd):
+def cmdtoasm(cmd):
     if cmd.is_push() or cmd.is_pop():
-        return write_stack(cmd)
+        asm = stacktoasm(cmd)
     else:
-        return write_arithmetic(cmd)
+        asm = arithtoasm(cmd)
+    return '\n'.join(asm+[''])
 
 
 def infloop():
-    asm = '(INFINITE_LOOP)\n'
-    asm += '@INFINITE_LOOP\n'
-    asm += '0;JMP\n'
-    return asm
+    asm = [
+        '(INFINITE_LOOP)',
+        '@INFINITE_LOOP',
+        '0;JMP',
+        '',
+    ]
+    return '\n'.join(asm)
 
 
 if __name__ == '__main__':
@@ -205,6 +221,6 @@ if __name__ == '__main__':
 
     with open(asmpath, 'w') as asmfile:
         for cmd in parse(vmfpath):
-            asmfile.write(write_asm(cmd))
+            asmfile.write(cmdtoasm(cmd))
         asmfile.write(infloop())
 
