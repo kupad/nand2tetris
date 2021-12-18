@@ -13,6 +13,7 @@ Author: Phil Dreizen
 import sys
 import os
 import re
+from functools import partial
 from enum import Enum, auto
 
 
@@ -22,12 +23,14 @@ class CmdType(Enum):
     POP = auto()
 
 
-# prefined registers and symbols
+# prefined registers and symbols and values
 A = 'A'
 D = 'D'
 M = 'M'
 SP = '@SP'
 TMP0 = R13 = '@R13'
+TRUE = -1
+FALSE = 0
 
 
 class VMError(Exception):
@@ -105,23 +108,53 @@ def parse(vmfname):
             yield cmd
 
 
-def asm_inc_sp():
-    asm = [
-        '@SP',
+def asm_inc_ptr(ptr):
+    """
+    Increment ptr
+    """
+    return [
+        ptr,
         'M=M+1',
     ]
-    return asm
+
+
+"""
+Increment Stack Pointer
+"""
+asm_inc_sp = partial(asm_inc_ptr, SP)
+
+
+def asm_mov_derefptr(ptr, comp):
+    """
+    [ptr] <- comp
+
+    ptr: a memory address, ie: '@SP'
+    comp: A valid computation ie (D,0,-1,D+1)
+
+    Find the memory address in ptr, load it into A, then
+    load value into A
+    """
+    return [
+        ptr,
+        'A=M',
+        f'M={comp}',
+    ]
+
+
+"""
+[@SP] <- comp
+
+move comp value into whatever @SP is currently pointing to
+"""
+asm_mov_derefsp = partial(asm_mov_derefptr, SP)
 
 
 def asm_push(source='D'):
     """push the value in the source reg onto the stack"""
-    asm = [
-        '@SP',
-        'A=M',
-        'M='+source,
+    return [
+        *asm_mov_derefsp(source),
+        *asm_inc_sp(),
     ]
-    asm += asm_inc_sp()
-    return asm
 
 
 def asm_pop(dest='D'):
@@ -131,30 +164,18 @@ def asm_pop(dest='D'):
         'M=M-1',
         'A=M',
     ]
+    # TODO: can combine following instr 'A=M'
     if dest:
         asm.append(dest+'=M')
-    return asm
-
-
-def asm_load(destmem, source='D'):
-    """
-    destmem: a memory location
-    source: a register
-    """
-    asm = [
-        destmem,
-        'M='+source,
-    ]
     return asm
 
 
 def stacktoasm(cmd):
     segment = cmd.arg1
     value = cmd.arg2
-
     asm = [
         # gen comment
-        '//'+'push ' if cmd.is_push() else 'pop '+segment+' '+value,
+        '//'+('push ' if cmd.is_push() else 'pop ')+segment+' '+value,
 
         # assuming segment is constant...
         '@'+value,
@@ -169,26 +190,203 @@ def stacktoasm(cmd):
     return asm
 
 
+def asm_2op(preamble, opdesc, op):
+    """2 op with no comparison"""
+    asm = [
+        preamble,
+        '//D <- pop op2',
+        *asm_pop(),
+
+        '//dec sp (M becomes op1)',
+        *asm_pop(dest=None),
+
+        opdesc,
+        op,
+
+        '//inc stack',
+        *asm_inc_sp(),
+    ]
+    return asm
+
+
+def addtoasm(cmd):
+    preamble = '//add'
+    opdesc = '//M <- op1(M) + op2(D)'
+    op = 'M=D+M'
+    return asm_2op(preamble, opdesc, op)
+
+
+def subtoasm(cmd):
+    preamble = '//sub'
+    opdesc = '//M <- op1(M) - op2(D)'
+    op = 'M=M-D'
+    return asm_2op(preamble, opdesc, op)
+
+
+def andtoasm(cmd):
+    preamble = '//and'
+    opdesc = '//M <- op1(M) & op2(D)'
+    op = 'M=D&M'
+    return asm_2op(preamble, opdesc, op)
+
+
+def ortoasm(cmd):
+    preamble = '//or'
+    opdesc = '//M <- op1(M) | op2(D)'
+    op = 'M=D|M'
+    return asm_2op(preamble, opdesc, op)
+
+
+def negtoasm(cmd):
+    """arithmetic negation"""
+    asm = [
+        '//neg',
+
+        '//pop op1',
+        *asm_pop(dest=None),
+
+        'M=-M',
+
+        '//inc stack',
+        *asm_inc_sp(),
+    ]
+    return asm
+
+
+def nottoasm(cmd):
+    """bitwise logical not"""
+    asm = [
+        '//not',
+
+        '//pop op1',
+        *asm_pop(dest=None),
+
+        'M=!M',
+
+        '//inc stack',
+        *asm_inc_sp(),
+    ]
+    return asm
+
+
+labelno = 0
+
+
+def genlabel():
+    global labelno
+    label = f'(LABEL_{labelno})'
+    labelno += 1
+    return label
+
+
+def symb(label):
+    return '@'+label[1:-1]
+
+
+def asm_ifelse(cmpinstr, iftrue, iffalse):
+    islbl = genlabel()
+    isnotlbl = genlabel()
+
+    asm = [
+        symb(islbl),
+        cmpinstr,
+        *iffalse,
+        symb(isnotlbl),
+        '0;JMP',
+        islbl,
+        *iftrue,
+        isnotlbl,
+    ]
+    return asm
+
+
+def eqtoasm(cmd):
+    asm = [
+        '//eq',
+        '//D <- pop op2',
+        *asm_pop(D),
+
+        '//dec sp (M becomes op1)',
+        *asm_pop(None),
+
+        'MD=M-D',
+        *asm_ifelse(
+            'D;JEQ',
+            asm_mov_derefsp(TRUE),
+            asm_mov_derefsp(FALSE)),
+
+        '//inc stack',
+        *asm_inc_sp(),
+    ]
+    return asm
+
+
+def lttoasm(cmd):
+    asm = [
+        '//lt',
+        '//D <- pop op2',
+        *asm_pop(D),
+
+        '//dec sp (M becomes op1)',
+        # leaves D with previous val
+        *asm_pop(None),
+
+        'MD=M-D',
+        *asm_ifelse(
+            'D;JLT',
+            asm_mov_derefsp(TRUE),
+            asm_mov_derefsp(FALSE)),
+
+        '//inc stack',
+        *asm_inc_sp(),
+    ]
+    return asm
+
+
+def gttoasm(cmd):
+    asm = [
+        '//gt',
+        '//D <- pop op2',
+        *asm_pop(D),
+
+        '//dec sp (M becomes op1)',
+        # leaves D with previous val
+        *asm_pop(None),
+
+        'MD=M-D',
+        *asm_ifelse(
+            'D;JGT',
+            asm_mov_derefsp(TRUE),
+            asm_mov_derefsp(FALSE)),
+
+        '//inc stack',
+        *asm_inc_sp(),
+    ]
+    return asm
+
+
 def arithtoasm(cmd):
     op = cmd.txt
     if op == 'add':
-        asm = [
-            '//add',
-
-            '//D <- pop op2i',
-            *asm_pop(),
-
-            '//dec sp (M becomes op1)',
-            *asm_pop(dest=None),
-
-            '//M <- op1(M) + op2(D)',
-            'M=D+M',
-
-            '//inc stack',
-            *asm_inc_sp(),
-        ]
-        return asm
+        return addtoasm(cmd)
+    elif op == 'sub':
+        return subtoasm(cmd)
+    elif op == 'and':
+        return andtoasm(cmd)
+    elif op == 'or':
+        return ortoasm(cmd)
+    elif op == 'neg':
+        return negtoasm(cmd)
+    elif op == 'not':
+        return nottoasm(cmd)
+    elif op == 'eq':
+        return eqtoasm(cmd)
+    elif op == 'lt':
+        return lttoasm(cmd)
+    elif op == 'gt':
+        return gttoasm(cmd)
     else:
+        print('UNKNOWN', cmd)
         return []
 
 
