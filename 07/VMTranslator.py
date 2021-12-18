@@ -97,27 +97,43 @@ def parse(vmfname):
             yield cmd
 
 
-TMP1 = 'R5'
+TMP0 = '@R13'
 
 
-def write_asm_push():
-    """push the value in the source reg onto the stack"""
-    asm = ''
-    asm += '@SP\n'
-    asm += 'A=M\n'
-    asm += 'M=D\n'
-    asm += '@SP\n'
+def asm_inc_sp():
+    asm = '@SP\n'
     asm += 'M=M+1\n'
     return asm
 
 
-def write_asm_pop(dest='D'):
-    """pop the value off stack into dest reg"""
+def asm_push(source='D'):
+    """push the value in the source reg onto the stack"""
     asm = ''
     asm += '@SP\n'
+    asm += 'A=M\n'
+    asm += 'M='+source+'\n'
+    asm += asm_inc_sp()
+    return asm
+
+
+def asm_pop(dest='D'):
+    """pop the value off stack into dest reg"""
+    asm = ''
+    asm = '@SP\n'
     asm += 'M=M-1\n'
     asm += 'A=M\n'
-    asm += dest+'=M\n'
+    if dest:
+        asm += dest+'=M\n'
+    return asm
+
+
+def asm_load(destmem, source='D'):
+    """
+    destmem: a memory location
+    source: a register
+    """
+    asm = destmem+'\n'
+    asm += 'M='+source+'\n'
     return asm
 
 
@@ -136,9 +152,9 @@ def write_stack(cmd):
     asm += 'D=A\n'
 
     if cmd.is_push():
-        asm += write_asm_push()
+        asm += asm_push()
     else:
-        asm += write_asm_pop()
+        asm += asm_pop()
 
     return asm
 
@@ -148,38 +164,17 @@ def write_arithmetic(cmd):
     asm = ''
     if op == 'add':
         asm += '//add\n'
-        # pop op2
         asm += '//D <- pop op2\n'
-        asm += '@SP\n'
-        asm += 'M=M-1\n'
-        asm += 'A=M\n'
-        asm += 'D=M\n'  # op2
+        asm += asm_pop()
 
-        # load op2 into TMP space
-        asm += '//TMP1 <- op2 \n'
-        asm += '@'+TMP1+'\n'
-        asm += 'M=D\n'
+        asm += '//dec sp (M becomes op1)\n'
+        asm += asm_pop(dest=None)
 
-        # pop op1
-        asm += '//D <- pop op1 \n'
-        asm += '@SP\n'
-        asm += 'M=M-1\n'
-        asm += 'A=M\n'
-        asm += 'D=M\n'  # op1
+        asm += '//M <- op1(M) + op2(D)\n'
+        asm += 'M=D+M\n'
 
-        # add op1 and TMP1
-        asm += '//D <- op1 + TMP1\n'
-        asm += '@'+TMP1+'\n'
-        asm += 'D=D+M\n'
-
-        # push D onto stack
-        asm += '//push D onto stack\n'
-        asm += ''
-        asm += '@SP\n'
-        asm += 'A=M\n'
-        asm += 'M=D\n'
-        asm += '@SP\n'
-        asm += 'M=M+1\n'
+        asm += '//inc stack\n'
+        asm += asm_inc_sp()
         return asm
     else:
         return ''
