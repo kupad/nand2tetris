@@ -144,7 +144,8 @@ def asm_mov_derefptr(ptr, comp):
 """
 [@SP] <- comp
 
-move comp value into whatever @SP is currently pointing to
+move comp value into whatever @SP is currently pointing to.
+NOTE: SP is pointing one higher than the logical stack
 """
 asm_mov_derefsp = partial(asm_mov_derefptr, SP)
 
@@ -164,7 +165,7 @@ def asm_pop(dest='D'):
         'M=M-1',
         'A=M',
     ]
-    # TODO: can combine following instr 'A=M'
+    # TODO: can combine following instr with above 'A=M'
     if dest:
         asm.append(dest+'=M')
     return asm
@@ -190,18 +191,27 @@ def stacktoasm(cmd):
     return asm
 
 
-def asm_2op(preamble, opcmt, opinstr):
-    """2 op with no comparison"""
+def asm_arith2op(op, precmt=''):
+    """
+    Pop top 2 values from stack. Perform operation on it.
+    Then push result on stack.
+
+    precmt: cmt for the following instructions
+    op: a valid 2 op computation {+,-,|,&}
+
+    Note: This optimizes things a bit. Taking advantage of the location
+    of the SP, we avoid some instrunctions
+    """
     asm = [
-        preamble,
+        precmt,
         '//D <- pop op2',
         *asm_pop(D),
 
-        '//pop op1',
+        '//pop op1. M == op1',
         *asm_pop(dest=None),
 
-        opcmt,
-        opinstr,
+        f'//M <- op1(M) {op} op2(D)',
+        f'M=M{op}D',
 
         '//inc stack',
         *asm_inc_sp(),
@@ -209,59 +219,25 @@ def asm_2op(preamble, opcmt, opinstr):
     return asm
 
 
-def addtoasm(cmd):
-    return asm_2op(
-        '//add',
-        '//M <- op1(M) + op2(D)',
-        'M=D+M')
+def asm_arith1op(op, precmt=''):
+    """
+    Pop top value from stack. Perform operation on it.
+    Then push result back on stack.
 
+    precmt: cmt for the following instructions
+    op: a valid 1 op computation {!,-}
 
-def subtoasm(cmd):
-    return asm_2op(
-        '//sub',
-        '//M <- op1(M) - op2(D)',
-        'M=M-D')
-
-
-def andtoasm(cmd):
-    return asm_2op(
-        '//and',
-        '//M <- op1(M) & op2(D)',
-        'M=D&M')
-
-
-def ortoasm(cmd):
-    return asm_2op(
-        '//or',
-        '//M <- op1(M) | op2(D)',
-        'M=D|M')
-
-
-def negtoasm(cmd):
-    """arithmetic negation"""
+    Note: This optimizes things a bit. Taking advantage of the location
+    of the SP, we avoid some instrunctions
+    """
     asm = [
-        '//neg',
+        precmt,
 
-        '//pop op1',
-        *asm_pop(dest=None),
+        '//pop op',
+        *asm_pop(None),
 
-        'M=-M',
-
-        '//inc stack',
-        *asm_inc_sp(),
-    ]
-    return asm
-
-
-def nottoasm(cmd):
-    """bitwise logical not"""
-    asm = [
-        '//not',
-
-        '//pop op1',
-        *asm_pop(dest=None),
-
-        'M=!M',
+        f'//M <- {op}M',
+        f'M={op}M',
 
         '//inc stack',
         *asm_inc_sp(),
@@ -368,17 +344,17 @@ def gttoasm(cmd):
 def arithtoasm(cmd):
     op = cmd.txt
     if op == 'add':
-        return addtoasm(cmd)
+        return asm_arith2op('+', '//add')
     elif op == 'sub':
-        return subtoasm(cmd)
+        return asm_arith2op('-', '//sub')
     elif op == 'and':
-        return andtoasm(cmd)
+        return asm_arith2op('&', '//and')
     elif op == 'or':
-        return ortoasm(cmd)
+        return asm_arith2op('|', '//or')
     elif op == 'neg':
-        return negtoasm(cmd)
+        return asm_arith1op('-', '//arith neg (-)')
     elif op == 'not':
-        return nottoasm(cmd)
+        return asm_arith1op('!', '//logic bitwise not (!)')
     elif op == 'eq':
         return eqtoasm(cmd)
     elif op == 'lt':
