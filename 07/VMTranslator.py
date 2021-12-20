@@ -13,6 +13,7 @@ Author: Phil Dreizen
 import sys
 import os
 import re
+from collections import defaultdict
 from functools import partial
 from enum import Enum, auto
 
@@ -36,6 +37,33 @@ ARG = '@ARG'
 THIS = '@THIS'
 THAT = '@THAT'
 TEMP = '@R5'
+
+
+staticlookup = None
+
+
+def create_static_lookup(prognamespace):
+    # next available memory address for symbol table
+    # starts at 16 (R0-R15 defined)
+    nextaddr = 16
+
+    def getnextreg():
+        """
+        Returns next avail memory address and increments it.
+        """
+        nonlocal nextaddr
+        addr = nextaddr
+        nextaddr += 1
+        return '@'+str(addr)
+
+    statictbl = defaultdict(getnextreg)
+
+    def lookup(num):
+        nonlocal prognamespace
+        symb = prognamespace+'.'+num
+        return statictbl[symb]
+
+    return lookup
 
 
 class VMError(Exception):
@@ -230,6 +258,13 @@ def stackpushtoasm(cmd):
             'D=M',
             *asm_push(D),
         ]
+    elif segment == 'static':
+        reg = staticlookup(value)
+        asm += [
+            reg,
+            'D=M',
+            *asm_push(D),
+        ]
     else:
         asm += [
             *asm_lea(D, segment, value),
@@ -252,6 +287,13 @@ def stackpoptoasm(cmd):
         ]
     elif segment == 'pointer':
         reg = THIS if value == '0' else THAT
+        asm += [
+            *asm_pop(D),
+            reg,
+            'M=D',
+        ]
+    elif segment == 'static':
+        reg = staticlookup(value)
         asm += [
             *asm_pop(D),
             reg,
@@ -440,17 +482,26 @@ def infloop():
     return '\n'.join(asm)
 
 
-if __name__ == '__main__':
+def main():
+    global staticlookup
     if len(sys.argv) < 2:
         sys.exit("USAGE: VMTranslator.py input.vm")
 
     vmfpath = sys.argv[1]   # input: vm file full path
     dirname, vmfname = os.path.split(vmfpath)
-    asmfname = os.path.splitext(vmfname)[0]+'.asm'
+    basename, ext = os.path.splitext(vmfname)
+    prognamespace = basename
+    staticlookup = create_static_lookup(prognamespace)
+
+    asmfname = basename+'.asm'
     asmpath = os.path.join(dirname, asmfname)
 
     with open(asmpath, 'w') as asmfile:
         for cmd in parse(vmfpath):
             asmfile.write(cmdtoasm(cmd))
         asmfile.write(infloop())
+
+
+if __name__ == '__main__':
+    main()
 
