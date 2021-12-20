@@ -223,6 +223,13 @@ def stackpushtoasm(cmd):
             'D=M',
             *asm_push(D),
         ]
+    elif segment == 'pointer':
+        reg = THIS if value == '0' else THAT
+        asm += [
+            reg,
+            'D=M',
+            *asm_push(D),
+        ]
     else:
         asm += [
             *asm_lea(D, segment, value),
@@ -241,6 +248,13 @@ def stackpoptoasm(cmd):
         asm += [
             *asm_pop(D),
             '@'+reg,
+            'M=D',
+        ]
+    elif segment == 'pointer':
+        reg = THIS if value == '0' else THAT
+        asm += [
+            *asm_pop(D),
+            reg,
             'M=D',
         ]
     else:
