@@ -204,50 +204,58 @@ def asm_pop(dest=D):
     return asm
 
 
-def stacktoasm(cmd):
+def stackpushtoasm(cmd):
     segment = cmd.arg1
     value = cmd.arg2
 
-    asm = [
-        '//'+('push ' if cmd.is_push() else 'pop ')+segment+' '+value
-    ]
+    asm = ['//push '+segment+' '+value]
 
-    if cmd.is_push():
-        if segment == 'constant':
-            asm += [
-                '@'+value,
-                'D=A',
-                *asm_push(D),
-            ]
-        elif segment == 'temp':
-            reg = str(5 + int(value))
-            asm += [
-                '@'+reg,
-                'D=M',
-                *asm_push(D),
-            ]
-        else:
-            asm += [
-                *asm_lea(D, segment, value),
-                *asm_push(D),
-            ]
+    if segment == 'constant':
+        asm += [
+            '@'+value,
+            'D=A',
+            *asm_push(D),
+        ]
+    elif segment == 'temp':
+        reg = str(5 + int(value))
+        asm += [
+            '@'+reg,
+            'D=M',
+            *asm_push(D),
+        ]
     else:
-        if segment == 'temp':
-            reg = str(5 + int(value))
-            asm += [
-                *asm_pop(D),
-                '@'+reg,
-                'M=D',
-            ]
-        else:
-            asm += [
-                *asm_lea('', segment, value),
-                'D=A',
-                *asm_sav_tmp1(D),
-                *asm_pop(D),
-                *asm_mov_derefptr(TMP1, D)
-            ]
+        asm += [
+            *asm_lea(D, segment, value),
+            *asm_push(D),
+        ]
     return asm
+
+
+def stackpoptoasm(cmd):
+    segment = cmd.arg1
+    value = cmd.arg2
+
+    asm = ['//pop '+segment+' '+value]
+    if segment == 'temp':
+        reg = str(5 + int(value))
+        asm += [
+            *asm_pop(D),
+            '@'+reg,
+            'M=D',
+        ]
+    else:
+        asm += [
+            *asm_lea('', segment, value),
+            'D=A',
+            *asm_sav_tmp1(D),
+            *asm_pop(D),
+            *asm_mov_derefptr(TMP1, D)
+        ]
+    return asm
+
+
+def stacktoasm(cmd):
+    return stackpushtoasm(cmd) if cmd.is_push() else stackpoptoasm(cmd)
 
 
 def arith2op(op, precmt=''):
