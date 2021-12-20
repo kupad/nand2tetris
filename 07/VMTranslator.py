@@ -27,10 +27,15 @@ class CmdType(Enum):
 A = 'A'
 D = 'D'
 M = 'M'
-SP = '@SP'
-TMP0 = R13 = '@R13'
+TMP1 = R13 = '@R13'
 TRUE = -1
 FALSE = 0
+SP = '@SP'
+LCL = '@LCL'
+ARG = '@ARG'
+THIS = '@THIS'
+THAT = '@THAT'
+TEMP = '@R5'
 
 
 class VMError(Exception):
@@ -150,22 +155,50 @@ NOTE: SP is pointing one higher than the logical stack
 asm_mov_derefsp = partial(asm_mov_derefptr, SP)
 
 
-def asm_push(comp='D'):
-    """push the comp in the source reg onto the stack"""
+seg2symb = {
+    'local': LCL,
+    'this': THIS,
+    'that': THAT,
+    'temp': TEMP,
+    'argument': ARG,
+}
+
+
+def asm_lea(dest, segment, offset):
+    asm = [
+        '@'+offset,
+        'D=A',
+        seg2symb[segment],
+        'A=M',
+        'A=A+D',
+    ]
+    if dest and dest != M:
+        asm.append(f'{dest}=M')
+    return asm
+
+
+def asm_sav_tmp1(source=D):
+    return [
+        TMP1,
+        f'M={source}',
+    ]
+
+
+def asm_push(comp=D):
+    """push the comp onto the stack"""
     return [
         *asm_mov_derefsp(comp),
         *asm_inc_sp(),
     ]
 
 
-def asm_pop(dest='D'):
+def asm_pop(dest=D):
     """pop the value off stack into dest reg"""
     asm = [
-        '@SP',
+        SP,
         'M=M-1',
         'A=M',
     ]
-    # TODO: can combine following instr with above 'A=M'
     if dest:
         asm.append(dest+'=M')
     return asm
@@ -174,20 +207,46 @@ def asm_pop(dest='D'):
 def stacktoasm(cmd):
     segment = cmd.arg1
     value = cmd.arg2
-    asm = [
-        # gen comment
-        '//'+('push ' if cmd.is_push() else 'pop ')+segment+' '+value,
 
-        # assuming segment is constant...
-        '@'+value,
-        'D=A',
+    asm = [
+        '//'+('push ' if cmd.is_push() else 'pop ')+segment+' '+value
     ]
 
     if cmd.is_push():
-        asm += asm_push(D)
+        if segment == 'constant':
+            asm += [
+                '@'+value,
+                'D=A',
+                *asm_push(D),
+            ]
+        elif segment == 'temp':
+            reg = str(5 + int(value))
+            asm += [
+                '@'+reg,
+                'D=M',
+                *asm_push(D),
+            ]
+        else:
+            asm += [
+                *asm_lea(D, segment, value),
+                *asm_push(D),
+            ]
     else:
-        asm += asm_pop(D)
-
+        if segment == 'temp':
+            reg = str(5 + int(value))
+            asm += [
+                *asm_pop(D),
+                '@'+reg,
+                'M=D',
+            ]
+        else:
+            asm += [
+                *asm_lea('', segment, value),
+                'D=A',
+                *asm_sav_tmp1(D),
+                *asm_pop(D),
+                *asm_mov_derefptr(TMP1, D)
+            ]
     return asm
 
 
@@ -245,10 +304,13 @@ def arith1op(op, precmt=''):
     return asm
 
 
-labelno = 1
+labelno = 0
 
 
 def genlabel():
+    """
+    Generates a generic label.  Uses a counter for uniqueness
+    """
     global labelno
     label = f'(LABEL_{labelno})'
     labelno += 1
@@ -260,6 +322,13 @@ def symb(label):
 
 
 def asm_ifelse(cmpinstr, iftrue, iffalse):
+    """
+    Generates the instructions for a if-then-else control.
+
+    cmpinstr: {comp};{jmp} (ie: D;JEQ)
+    iftrue: instructions to generate if jmp would be true
+    iffalse: instructions to generate if jmp would be false
+    """
     islbl = genlabel()
     isnotlbl = genlabel()
 
@@ -277,6 +346,15 @@ def asm_ifelse(cmpinstr, iftrue, iffalse):
 
 
 def arithcmp(jmp, precmt=''):
+    """
+    Pop top 2 values from the stack and do a compare.
+    Push result of comparisaon on stack
+
+    jmp: {JEQ,JLT,JGT}
+        JEQ: if op1 > op2, push TRUE, else FALSE
+        JLT: if op1 < op2, push TRUE, else FALSE
+        JGT: if op1 > op2, push TRUE, else FALSE
+    """
     asm = [
         precmt,
         '//D <- pop op2',
