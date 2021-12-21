@@ -221,32 +221,23 @@ seg2symb = {
 }
 
 
-def asm_load_val(dest, val):
-    """load val into dest"""
-    return [
-        '@'+val,
-        f'{dest}=A'
-    ]
+def asm_lea(dest, baseptr, offset):
+    """
+    load effective address
 
-
-def asm_lea(dest, segment, offset):
+    baseptr: an ainstr (ie: @LCL). It's value is a ptr
+    offset: offset from baseptr
+    dest: dest for value in [(baseptr+offset)]
+    """
     asm = [
-        '@'+offset,
-        'D=A',
-        seg2symb[segment],
+        *asm_mov(D, offset),
+        baseptr,
         'A=M',
         'A=A+D',
     ]
     if dest and dest != M:
         asm.append(f'{dest}=M')
     return asm
-
-
-def asm_sav_tmp1(source=D):
-    return [
-        TMP1,
-        f'M={source}',
-    ]
 
 
 def asm_push(comp=D):
@@ -291,7 +282,8 @@ def stackpushtoasm(cmd):
         source = seglookup(segment, value)
         asm += [*asm_mov(D, source)]
     else:
-        asm += [*asm_lea(D, segment, value)]
+        basemem = seg2symb[segment]
+        asm += [*asm_lea(D, basemem, value)]
     asm += [*asm_push(D)]
     return asm
 
@@ -308,10 +300,11 @@ def stackpoptoasm(cmd):
             *asm_mov(dest, D)
         ]
     else:
+        basemem = seg2symb[segment]
         asm += [
-            *asm_lea('', segment, value),
+            *asm_lea(None, basemem, value),
             'D=A',
-            *asm_sav_tmp1(D),
+            *asm_mov(TMP1, D),
             *asm_pop(D),
             *asm_mov_derefptr(TMP1, D)
         ]
