@@ -141,6 +141,35 @@ def parse(vmfname):
             yield cmd
 
 
+def isnum(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
+
+
+def asm_mov(dest, source):
+    asm = []
+    if isnum(source):
+        asm += ['@'+source]
+        sourcereg = A
+    elif source.startswith('@'):
+        asm += [source]
+        sourcereg = M
+    else:
+        sourcereg = source
+
+    if dest.startswith('@'):
+        asm += [dest]
+        destreg = M
+    else:
+        destreg = dest
+
+    asm += [f'{destreg}={sourcereg}']
+    return asm
+
+
 def asm_inc_ptr(ptr):
     """
     Increment ptr
@@ -240,43 +269,30 @@ def asm_pop(dest=D):
     return asm
 
 
+def seglookup(segment, value):
+    """segment+value -> source/dest"""
+    if segment == 'constant':
+        return value
+    elif segment == 'temp':
+        return '@' + str(5 + int(value))
+    elif segment == 'pointer':
+        return THIS if value == '0' else THAT
+    elif segment == 'static':
+        return staticlookup(value)
+
+
 def stackpushtoasm(cmd):
     segment = cmd.arg1
     value = cmd.arg2
 
     asm = ['//push '+segment+' '+value]
 
-    if segment == 'constant':
-        asm += [
-            *asm_load_val(D, value),
-            *asm_push(D),
-        ]
-    elif segment == 'temp':
-        reg = str(5 + int(value))
-        asm += [
-            '@'+reg,
-            'D=M',
-            *asm_push(D),
-        ]
-    elif segment == 'pointer':
-        reg = THIS if value == '0' else THAT
-        asm += [
-            reg,
-            'D=M',
-            *asm_push(D),
-        ]
-    elif segment == 'static':
-        reg = staticlookup(value)
-        asm += [
-            reg,
-            'D=M',
-            *asm_push(D),
-        ]
+    if segment in ('constant', 'temp', 'pointer', 'static'):
+        source = seglookup(segment, value)
+        asm += [*asm_mov(D, source)]
     else:
-        asm += [
-            *asm_lea(D, segment, value),
-            *asm_push(D),
-        ]
+        asm += [*asm_lea(D, segment, value)]
+    asm += [*asm_push(D)]
     return asm
 
 
@@ -285,26 +301,11 @@ def stackpoptoasm(cmd):
     value = cmd.arg2
 
     asm = ['//pop '+segment+' '+value]
-    if segment == 'temp':
-        reg = str(5 + int(value))
+    if segment in ('constant', 'temp', 'pointer', 'static'):
+        dest = seglookup(segment, value)
         asm += [
             *asm_pop(D),
-            '@'+reg,
-            'M=D',
-        ]
-    elif segment == 'pointer':
-        reg = THIS if value == '0' else THAT
-        asm += [
-            *asm_pop(D),
-            reg,
-            'M=D',
-        ]
-    elif segment == 'static':
-        reg = staticlookup(value)
-        asm += [
-            *asm_pop(D),
-            reg,
-            'M=D',
+            *asm_mov(dest, D)
         ]
     else:
         asm += [
