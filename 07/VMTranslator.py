@@ -192,6 +192,14 @@ seg2symb = {
 }
 
 
+def asm_load_val(dest, val):
+    """load val into dest"""
+    return [
+        '@'+val,
+        f'{dest}=A'
+    ]
+
+
 def asm_lea(dest, segment, offset):
     asm = [
         '@'+offset,
@@ -240,8 +248,7 @@ def stackpushtoasm(cmd):
 
     if segment == 'constant':
         asm += [
-            '@'+value,
-            'D=A',
+            *asm_load_val(D, value),
             *asm_push(D),
         ]
     elif segment == 'temp':
