@@ -311,10 +311,6 @@ def stackpoptoasm(cmd):
     return asm
 
 
-def stacktoasm(cmd):
-    return stackpushtoasm(cmd) if cmd.is_push() else stackpoptoasm(cmd)
-
-
 def arith2op(op, precmt=''):
     """
     Pop top 2 values from stack. Perform operation on it.
@@ -332,7 +328,7 @@ def arith2op(op, precmt=''):
         *asm_pop(D),
 
         '//pop op1. M == op1',
-        *asm_pop(dest=None),
+        *asm_pop(None),
 
         f'//M <- op1(M) {op} op2(D)',
         f'M=M{op}D',
@@ -466,8 +462,10 @@ def arithtoasm(cmd):
 
 
 def cmdtoasm(cmd):
-    if cmd.is_push() or cmd.is_pop():
-        asm = stacktoasm(cmd)
+    if cmd.is_push():
+        asm = stackpushtoasm(cmd)
+    elif cmd.is_pop():
+        asm = stackpoptoasm(cmd)
     else:
         asm = arithtoasm(cmd)
     return '\n'.join(asm+[''])
@@ -491,8 +489,7 @@ def main():
     vmfpath = sys.argv[1]   # input: vm file full path
     dirname, vmfname = os.path.split(vmfpath)
     basename, ext = os.path.splitext(vmfname)
-    prognamespace = basename
-    staticlookup = create_static_lookup(prognamespace)
+    staticlookup = create_static_lookup(basename)
 
     asmfname = basename+'.asm'
     asmpath = os.path.join(dirname, asmfname)
