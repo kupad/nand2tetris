@@ -22,6 +22,7 @@ class CmdType(Enum):
     ARITHMETIC = auto()
     PUSH = auto()
     POP = auto()
+    BRANCH = auto()
 
 
 # prefined registers and symbols and values
@@ -96,6 +97,9 @@ class Command():
     def is_pop(self):
         return self.type is CmdType.POP
 
+    def is_branch(self):
+        return self.type is CmdType.BRANCH
+
     def __repr__(self):
         return f'{self.txt}|{self.type}'
 
@@ -133,6 +137,9 @@ def parse(vmfname):
                 cmdtype = CmdType.POP
                 arg1 = tokens[1]
                 arg2 = tokens[2]
+            elif cmdtypetxt in ('label', 'goto', 'if-goto'):
+                cmdtype = CmdType.BRANCH
+                arg1 = tokens[1]
             else:
                 cmdtype = CmdType.ARITHMETIC
 
@@ -371,6 +378,8 @@ labelno = 0
 def genlabel():
     """
     Generates a generic label.  Uses a counter for uniqueness
+
+    Internal labels
     """
     global labelno
     label = f'(LABEL_{labelno})'
@@ -461,11 +470,38 @@ def arithtoasm(cmd):
         return []
 
 
+def branchtoasm(cmd):
+    label = cmd.arg1
+    funcname = "Foo"  # tmp
+
+    def asm_label():
+        return funcname+'.'+label
+
+    if cmd.txt.startswith('label'):
+        return ['('+asm_label()+')']
+
+    elif cmd.txt.startswith('if-goto'):
+        return [
+            *asm_pop(D),
+            '@'+asm_label(),
+            'D;JNE'
+        ]
+    elif cmd.txt.startswith('goto'):
+        return [
+            '@'+asm_label(),
+            '0;JMP'
+        ]
+    else:
+        print("error in branchtoasm", cmd)
+
+
 def cmdtoasm(cmd):
     if cmd.is_push():
         asm = stackpushtoasm(cmd)
     elif cmd.is_pop():
         asm = stackpoptoasm(cmd)
+    elif cmd.is_branch():
+        asm = branchtoasm(cmd)
     else:
         asm = arithtoasm(cmd)
     return '\n'.join(asm+[''])
@@ -479,6 +515,10 @@ def infloop():
         '',
     ]
     return '\n'.join(asm)
+
+
+def gen_funclabel(label):
+    asm = ['('+label+')']
 
 
 def main():
