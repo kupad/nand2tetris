@@ -44,10 +44,20 @@ THAT = '@THAT'
 TEMP = '@R5'
 
 
+# global state:
 state = {
-    'curr_filespace': "unknown",
+    # file currently being processed
+    'curr_filespace': 'unknown',
+
+    # current function being translated
     'curr_function': "bootstrap",
-    'return_counter': 0
+
+    # return counter withing a function.
+    # resets to 0 on every new function being defined
+    'return_counter': 0,
+
+    # global if/else label
+    'if_else_labelno': 0,
 }
 
 
@@ -157,7 +167,7 @@ def parse(vmfname):
             yield cmd
 
 
-def isnum(s):
+def is_num(s):
     try:
         int(s)
         return True
@@ -165,16 +175,10 @@ def isnum(s):
         return False
 
 
-def asm_goto(addr):
-    return [
-        addr,
-        '0;JMP'
-    ]
-
-
 def asm_mov(dest, source):
-    asm = [f'//asm_mov {dest}, {source}']
-    if isnum(source):
+    # asm = [f'//asm_mov {dest}, {source}']
+    asm = []
+    if is_num(source):
         asm += ['@'+source]
         if dest.startswith('@'):
             asm += ['D=A']
@@ -228,6 +232,7 @@ def asm_mov_derefptr(ptr, comp):
     load value into A
     """
     return [
+        # f'//asm_mov_derefptr {ptr} {comp}',
         ptr,
         'A=M',
         f'M={comp}',
@@ -261,7 +266,7 @@ def asm_lea(dest, baseptr, offset, op='+'):
     dest: dest for value in [(baseptr+offset)]
     """
     asm = [
-        f'//asm_lea {dest}, {baseptr}, {op}{offset}',
+        # f'//asm_lea {dest}, {baseptr}, {op}{offset}',
         *asm_mov(D, offset),
         baseptr,
         'A=M',
@@ -299,6 +304,39 @@ def asm_pop(dest=D):
     return asm
 
 
+def genlabel():
+    """
+    Generates a generic label.  Uses a counter for uniquenes
+    """
+    label = f'(COND_LABEL_{state["if_else_labelno"]})'
+    state['if_else_labelno'] += 1
+    return label
+
+
+def asm_ifelse(cmpinstr, iftrue, iffalse):
+    """
+    Generates the instructions for a if-then-else control.
+
+    cmpinstr: {comp};{jmp} (ie: D;JEQ)
+    iftrue: instructions to generate if jmp would be true
+    iffalse: instructions to generate if jmp would be false
+    """
+    islbl = genlabel()
+    isnotlbl = genlabel()
+
+    asm = [
+        symb(islbl),
+        cmpinstr,
+        *iffalse,
+        symb(isnotlbl),
+        '0;JMP',
+        islbl,
+        *iftrue,
+        isnotlbl,
+    ]
+    return asm
+
+
 def seglookup(segment, value):
     """segment+value -> source/dest"""
     if segment == 'constant':
@@ -312,7 +350,7 @@ def seglookup(segment, value):
         return f"@{state['curr_filespace']}.{value}"
 
 
-def stackpushtoasm(cmd):
+def translate_push(cmd):
     segment = cmd.arg1
     value = cmd.arg2
 
@@ -328,7 +366,7 @@ def stackpushtoasm(cmd):
     return asm
 
 
-def stackpoptoasm(cmd):
+def translate_pop(cmd):
     segment = cmd.arg1
     value = cmd.arg2
 
@@ -405,47 +443,8 @@ def arith1op(op, precmt=''):
     return asm
 
 
-labelno = 0
-
-
-def genlabel():
-    """
-    Generates a generic label.  Uses a counter for uniqueness
-
-    Internal labels
-    """
-    global labelno
-    label = f'(LABEL_{labelno})'
-    labelno += 1
-    return label
-
-
 def symb(label):
     return '@'+label[1:-1]
-
-
-def asm_ifelse(cmpinstr, iftrue, iffalse):
-    """
-    Generates the instructions for a if-then-else control.
-
-    cmpinstr: {comp};{jmp} (ie: D;JEQ)
-    iftrue: instructions to generate if jmp would be true
-    iffalse: instructions to generate if jmp would be false
-    """
-    islbl = genlabel()
-    isnotlbl = genlabel()
-
-    asm = [
-        symb(islbl),
-        cmpinstr,
-        *iffalse,
-        symb(isnotlbl),
-        '0;JMP',
-        islbl,
-        *iftrue,
-        isnotlbl,
-    ]
-    return asm
 
 
 def arithcmp(jmp, precmt=''):
@@ -478,7 +477,7 @@ def arithcmp(jmp, precmt=''):
     return asm
 
 
-def arithtoasm(cmd):
+def translate_arith(cmd):
     op = cmd.txt
     if op == 'add':
         return arith2op('+', '//add')
@@ -503,32 +502,28 @@ def arithtoasm(cmd):
         return []
 
 
-def branchtoasm(cmd):
-    label = cmd.arg1
-    funcname = "Foo"  # tmp
-
-    def asm_label():
-        return funcname+'.'+label
+def translate_branch(cmd):
+    label = state['curr_function'] + '.' + cmd.arg1
 
     if cmd.txt.startswith('label'):
-        return ['('+asm_label()+')']
+        return ['('+label+')']
 
     elif cmd.txt.startswith('if-goto'):
         return [
             *asm_pop(D),
-            '@'+asm_label(),
+            '@'+label,
             'D;JNE'
         ]
     elif cmd.txt.startswith('goto'):
         return [
-            '@'+asm_label(),
+            '@'+label,
             '0;JMP'
         ]
     else:
-        print("error in branchtoasm", cmd)
+        print("error in translate_branch", cmd)
 
 
-def functiontoasm(cmd):
+def translate_funcdef(cmd):
     name = cmd.arg1
     nvars = int(cmd.arg2)
 
@@ -547,7 +542,7 @@ def functiontoasm(cmd):
     return asm
 
 
-def calltoasm(cmd):
+def translate_callfunc(cmd):
     name = cmd.arg1
     nargs = int(cmd.arg2)
 
@@ -591,7 +586,7 @@ def calltoasm(cmd):
     return asm
 
 
-def returntoasm(cmd):
+def translate_return(cmd):
     frame = TMP1
     retaddr = TMP2
     asm = [
@@ -626,21 +621,21 @@ def returntoasm(cmd):
     return asm
 
 
-def cmdtoasm(cmd):
+def translate_cmd(cmd):
     if cmd.is_push():
-        asm = stackpushtoasm(cmd)
+        asm = translate_push(cmd)
     elif cmd.is_pop():
-        asm = stackpoptoasm(cmd)
+        asm = translate_pop(cmd)
     elif cmd.is_branch():
-        asm = branchtoasm(cmd)
+        asm = translate_branch(cmd)
     elif cmd.is_function():
-        asm = functiontoasm(cmd)
+        asm = translate_funcdef(cmd)
     elif cmd.is_call():
-        asm = calltoasm(cmd)
+        asm = translate_callfunc(cmd)
     elif cmd.is_return():
-        asm = returntoasm(cmd)
+        asm = translate_return(cmd)
     else:
-        asm = arithtoasm(cmd)
+        asm = translate_arith(cmd)
     return '\n'.join(asm+[''])
 
 
@@ -649,7 +644,7 @@ def bootstrap():
     asm = [
         '(bootstrap)',
         *asm_mov(SP, '256'),
-        *calltoasm(call_sysinit),
+        *translate_callfunc(call_sysinit),
         '',
     ]
     return '\n'.join(asm)
@@ -665,7 +660,7 @@ def infloop():
     return '\n'.join(asm)
 
 
-def isvmfile(f):
+def is_vmfile(f):
     return f.suffix == '.vm'
 
 
@@ -675,7 +670,7 @@ def main():
 
     path = Path(sys.argv[1])   # input: source path
     if path.is_dir():
-        vmfiles = [f for f in path.iterdir() if isvmfile(f)]
+        vmfiles = [f for f in path.iterdir() if is_vmfile(f)]
         outdir = path
     else:
         vmfiles = [path]
@@ -689,7 +684,7 @@ def main():
         for vmfile in vmfiles:
             state['curr_filespace'] = vmfile.stem
             for cmd in parse(vmfile):
-                asmfile.write(cmdtoasm(cmd))
+                asmfile.write(translate_cmd(cmd))
         asmfile.write(infloop())
 
 
