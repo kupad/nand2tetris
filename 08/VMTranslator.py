@@ -57,7 +57,7 @@ state = {
     'return_counter': 0,
 
     # global if/else label
-    'if_else_labelno': 0,
+    'ifelse_labelno': 0,
 }
 
 
@@ -304,15 +304,6 @@ def asm_pop(dest=D):
     return asm
 
 
-def genlabel():
-    """
-    Generates a generic label.  Uses a counter for uniquenes
-    """
-    label = f'(COND_LABEL_{state["if_else_labelno"]})'
-    state['if_else_labelno'] += 1
-    return label
-
-
 def asm_ifelse(cmpinstr, iftrue, iffalse):
     """
     Generates the instructions for a if-then-else control.
@@ -321,19 +312,19 @@ def asm_ifelse(cmpinstr, iftrue, iffalse):
     iftrue: instructions to generate if jmp would be true
     iffalse: instructions to generate if jmp would be false
     """
-    islbl = genlabel()
-    isnotlbl = genlabel()
+    i = state['ifelse_labelno']
 
     asm = [
-        symb(islbl),
+        f'@IFELSE.{i}.TRUE',
         cmpinstr,
         *iffalse,
-        symb(isnotlbl),
+        f'@IFELSE.{i}.END',
         '0;JMP',
-        islbl,
+        f'(IFELSE.{i}.TRUE)',
         *iftrue,
-        isnotlbl,
+        f'(IFELSE.{i}.END)',
     ]
+    state['ifelse_labelno'] += 1
     return asm
 
 
