@@ -45,39 +45,10 @@ TEMP = '@R5'
 
 
 state = {
-    'current_filespace': "unknown",
-    'current_function': "bootstrap",
+    'curr_filespace': "unknown",
+    'curr_function': "bootstrap",
     'return_counter': 0
 }
-
-
-def create_static_lookup():
-    # next available memory address for symbol table
-    # starts at 16 (R0-R15 defined)
-    nextaddr = 16
-
-    def getnextreg():
-        """
-        Returns next avail memory address and increments it.
-        """
-        nonlocal nextaddr
-        addr = nextaddr
-        nextaddr += 1
-        return '@'+str(addr)
-
-    statictbl = defaultdict(getnextreg)
-
-    def lookup(num):
-        filespace = state['current_filespace']
-        symb = filespace+'.'+num
-        rv = statictbl[symb]
-        # print(symb, '->', rv)
-        return rv
-
-    return lookup
-
-
-staticlookup = create_static_lookup()
 
 
 class VMError(Exception):
@@ -337,7 +308,8 @@ def seglookup(segment, value):
     elif segment == 'pointer':
         return THIS if value == '0' else THAT
     elif segment == 'static':
-        return staticlookup(value)
+        # ie: if file is Foo.vm->Foo.value
+        return f"@{state['curr_filespace']}.{value}"
 
 
 def stackpushtoasm(cmd):
@@ -560,7 +532,7 @@ def functiontoasm(cmd):
     name = cmd.arg1
     nvars = int(cmd.arg2)
 
-    state['current_function'] = name
+    state['curr_function'] = name
     state['return_counter'] = 0
 
     asm = [
@@ -579,7 +551,7 @@ def calltoasm(cmd):
     name = cmd.arg1
     nargs = int(cmd.arg2)
 
-    retlabel = f"{state['current_function']}$ret.{state['return_counter']}"
+    retlabel = f"{state['curr_function']}$ret.{state['return_counter']}"
     state['return_counter'] += 1
 
     asm = [
@@ -715,7 +687,7 @@ def main():
     with open(asmpath, 'w') as asmfile:
         asmfile.write(bootstrap())
         for vmfile in vmfiles:
-            state['current_filespace'] = vmfile.stem
+            state['curr_filespace'] = vmfile.stem
             for cmd in parse(vmfile):
                 asmfile.write(cmdtoasm(cmd))
         asmfile.write(infloop())
