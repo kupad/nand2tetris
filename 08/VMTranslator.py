@@ -11,7 +11,6 @@ USAGE:
 Author: Phil Dreizen
 """
 import sys
-import os
 from pathlib import Path
 import re
 from collections import defaultdict
@@ -45,10 +44,14 @@ THAT = '@THAT'
 TEMP = '@R5'
 
 
-staticlookup = None
+state = {
+    'current_filespace': "unknown",
+    'current_function': "bootstrap",
+    'return_counter': 0
+}
 
 
-def create_static_lookup(prognamespace):
+def create_static_lookup():
     # next available memory address for symbol table
     # starts at 16 (R0-R15 defined)
     nextaddr = 16
@@ -65,11 +68,16 @@ def create_static_lookup(prognamespace):
     statictbl = defaultdict(getnextreg)
 
     def lookup(num):
-        nonlocal prognamespace
-        symb = prognamespace+'.'+num
-        return statictbl[symb]
+        filespace = state['current_filespace']
+        symb = filespace+'.'+num
+        rv = statictbl[symb]
+        # print(symb, '->', rv)
+        return rv
 
     return lookup
+
+
+staticlookup = create_static_lookup()
 
 
 class VMError(Exception):
@@ -548,12 +556,6 @@ def branchtoasm(cmd):
         print("error in branchtoasm", cmd)
 
 
-state = {
-    'current_function': "bootstrap",
-    'return_counter': 0
-}
-
-
 def functiontoasm(cmd):
     name = cmd.arg1
     nvars = int(cmd.arg2)
@@ -696,7 +698,6 @@ def isvmfile(f):
 
 
 def main():
-    global staticlookup
     if len(sys.argv) < 2:
         sys.exit("USAGE: VMTranslator.py input.vm")
 
@@ -709,12 +710,12 @@ def main():
         outdir = path.parent
 
     name = path.stem
-    staticlookup = create_static_lookup(name)
     asmpath = outdir.joinpath(name + '.asm')
 
     with open(asmpath, 'w') as asmfile:
         asmfile.write(bootstrap())
         for vmfile in vmfiles:
+            state['current_filespace'] = vmfile.stem
             for cmd in parse(vmfile):
                 asmfile.write(cmdtoasm(cmd))
         asmfile.write(infloop())
