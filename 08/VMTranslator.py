@@ -196,7 +196,11 @@ def asm_mov(dest, source):
     asm = [f'//asm_mov {dest}, {source}']
     if isnum(source):
         asm += ['@'+source]
-        sourcereg = A
+        if dest.startswith('@'):
+            asm += ['D=A']
+            sourcereg = D
+        else:
+            sourcereg = A
     elif source.startswith('@'):
         asm += [source]
         if dest.startswith('@'):
@@ -544,7 +548,7 @@ def branchtoasm(cmd):
 
 
 state = {
-    'current_function': "main",
+    'current_function': "bootstrap",
     'return_counter': 0
 }
 
@@ -665,6 +669,17 @@ def cmdtoasm(cmd):
     return '\n'.join(asm+[''])
 
 
+def bootstrap():
+    call_sysinit = parse_cmdtxt('call Sys.init 0')
+    asm = [
+        '(bootstrap)',
+        *asm_mov(SP, '256'),
+        *calltoasm(call_sysinit),
+        '',
+    ]
+    return '\n'.join(asm)
+
+
 def infloop():
     asm = [
         '(INFINITE_LOOP)',
@@ -689,6 +704,7 @@ def main():
     asmpath = os.path.join(dirname, asmfname)
 
     with open(asmpath, 'w') as asmfile:
+        asmfile.write(bootstrap())
         for cmd in parse(vmfpath):
             asmfile.write(cmdtoasm(cmd))
         asmfile.write(infloop())
