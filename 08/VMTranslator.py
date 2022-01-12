@@ -23,6 +23,9 @@ class CmdType(Enum):
     PUSH = auto()
     POP = auto()
     BRANCH = auto()
+    FUNCTION = auto()
+    CALL = auto()
+    RETURN = auto()
 
 
 # prefined registers and symbols and values
@@ -30,6 +33,7 @@ A = 'A'
 D = 'D'
 M = 'M'
 TMP1 = R13 = '@R13'
+TMP2 = R14 = '@R14'
 TRUE = -1
 FALSE = 0
 SP = '@SP'
@@ -80,9 +84,10 @@ class VMError(Exception):
 
 
 class Command():
-    def __init__(self, cmdtxt, cmdtype, arg1, arg2, cmdno, lineno):
-        self.txt = cmdtxt
+    def __init__(self, instrtxt, cmdtype, cmdtok, arg1, arg2, cmdno, lineno):
+        self.txt = instrtxt
         self.type = cmdtype
+        self.cmdtok = cmdtok
         self.arg1 = arg1
         self.arg2 = arg2
         self.cmdno = cmdno
@@ -100,11 +105,56 @@ class Command():
     def is_branch(self):
         return self.type is CmdType.BRANCH
 
+    def is_function(self):
+        return self.type is CmdType.FUNCTION
+
+    def is_call(self):
+        return self.type is CmdType.CALL
+
+    def is_return(self):
+        return self.type is CmdType.RETURN
+
     def __repr__(self):
         return f'{self.txt}|{self.type}'
 
 
 RE_COMMENT = re.compile(r'//.*')
+
+
+def parse_cmdtxt(cmdtxt, cmdno=-1, lineno=-1):
+    tokens = cmdtxt.split(" ")
+    cmdtok = tokens[0]
+    arg1 = None
+    arg2 = None
+
+    # Determine what kind of instruction this is
+    if cmdtok == 'push':
+        cmdtype = CmdType.PUSH
+        arg1 = tokens[1]
+        arg2 = tokens[2]
+    elif cmdtok == 'pop':
+        cmdtype = CmdType.POP
+        arg1 = tokens[1]
+        arg2 = tokens[2]
+    elif cmdtok == 'function':
+        cmdtype = CmdType.FUNCTION
+        arg1 = tokens[1]
+        arg2 = tokens[2]
+    elif cmdtok == 'call':
+        cmdtype = CmdType.CALL
+        arg1 = tokens[1]
+        arg2 = tokens[2]
+    elif cmdtok == 'return':
+        cmdtype = CmdType.RETURN
+    elif cmdtok in ('label', 'goto', 'if-goto'):
+        cmdtype = CmdType.BRANCH
+        arg1 = tokens[1]
+    else:
+        cmdtype = CmdType.ARITHMETIC
+
+    # create cmd and return
+    cmd = Command(cmdtxt, cmdtype, cmdtok, arg1, arg2, cmdno, lineno)
+    return cmd
 
 
 def parse(vmfname):
@@ -122,29 +172,8 @@ def parse(vmfname):
             cmdtxt = RE_COMMENT.sub('', line).strip()
             if cmdtxt == "":
                 continue
-
-            tokens = cmdtxt.split(" ")
-            cmdtypetxt = tokens[0]
-            arg1 = None
-            arg2 = None
-
-            # Determine what kind of instruction this is
-            if cmdtypetxt == 'push':
-                cmdtype = CmdType.PUSH
-                arg1 = tokens[1]
-                arg2 = tokens[2]
-            elif cmdtypetxt == 'pop':
-                cmdtype = CmdType.POP
-                arg1 = tokens[1]
-                arg2 = tokens[2]
-            elif cmdtypetxt in ('label', 'goto', 'if-goto'):
-                cmdtype = CmdType.BRANCH
-                arg1 = tokens[1]
-            else:
-                cmdtype = CmdType.ARITHMETIC
-
-            # create cmd and return
-            cmd = Command(cmdtxt, cmdtype, arg1, arg2, cmdno, lineno)
+            cmdno += 1
+            cmd = parse_cmdtxt(cmdtxt, cmdno, lineno)
             yield cmd
 
 
@@ -156,14 +185,25 @@ def isnum(s):
         return False
 
 
+def asm_goto(addr):
+    return [
+        addr,
+        '0;JMP'
+    ]
+
+
 def asm_mov(dest, source):
-    asm = []
+    asm = [f'//asm_mov {dest}, {source}']
     if isnum(source):
         asm += ['@'+source]
         sourcereg = A
     elif source.startswith('@'):
         asm += [source]
-        sourcereg = M
+        if dest.startswith('@'):
+            asm += ['D=M']
+            sourcereg = D
+        else:
+            sourcereg = M
     else:
         sourcereg = source
 
@@ -228,7 +268,7 @@ seg2symb = {
 }
 
 
-def asm_lea(dest, baseptr, offset):
+def asm_lea(dest, baseptr, offset, op='+'):
     """
     load effective address
 
@@ -237,13 +277,21 @@ def asm_lea(dest, baseptr, offset):
     dest: dest for value in [(baseptr+offset)]
     """
     asm = [
+        f'//asm_lea {dest}, {baseptr}, {op}{offset}',
         *asm_mov(D, offset),
         baseptr,
         'A=M',
-        'A=A+D',
+        'A=A+D' if op == '+' else 'A=A-D',
     ]
-    if dest and dest != M:
-        asm.append(f'{dest}=M')
+    if dest:
+        if dest.startswith('@'):
+            asm += [
+                'D=M',
+                dest,
+                'M=D'
+            ]
+        elif dest != M:
+            asm.append(f'{dest}=M')
     return asm
 
 
@@ -495,6 +543,110 @@ def branchtoasm(cmd):
         print("error in branchtoasm", cmd)
 
 
+state = {
+    'current_function': "main",
+    'return_counter': 0
+}
+
+
+def functiontoasm(cmd):
+    name = cmd.arg1
+    nvars = int(cmd.arg2)
+
+    state['current_function'] = name
+    state['return_counter'] = 0
+
+    asm = [
+        f'//function def: {name}',
+        '('+name+')',
+    ]
+    for _ in range(nvars):
+        asm += [
+            'D=0',
+            *asm_push(D)
+        ]
+    return asm
+
+
+def calltoasm(cmd):
+    name = cmd.arg1
+    nargs = int(cmd.arg2)
+
+    retlabel = f"{state['current_function']}$ret.{state['return_counter']}"
+    state['return_counter'] += 1
+
+    asm = [
+        f'//call {name} {nargs}',
+
+        # save ret address
+        '@'+retlabel, 'D=A', *asm_push(D),
+
+        # save pointers:
+        '@LCL',  'D=M', *asm_push(D),
+        '@ARG',  'D=M', *asm_push(D),
+        '@THIS', 'D=M', *asm_push(D),
+        '@THAT', 'D=M', *asm_push(D),
+
+        # ARG = SP - 5 - nargs
+        # notes:
+        #   1) before call, args have been pushed by callee
+        #   2) call just pushed 5 more values on the stack
+        *asm_mov(D, '5'),
+        '@' + str(nargs),
+        'D=A+D',
+        SP,
+        'D=M-D',
+        *asm_mov(ARG, D),
+
+        # LCL = SP
+        *asm_mov(LCL, SP),
+
+        # goto f
+        '@'+name,
+        '0;JMP',
+
+        # return label:
+        '('+retlabel+')'
+    ]
+
+    return asm
+
+
+def returntoasm(cmd):
+    frame = TMP1
+    retaddr = TMP2
+    asm = [
+        '//return',
+
+        # frame = @LCL
+        *asm_mov(frame, LCL),
+        # retaddr = *(frame-5)
+        *asm_lea(retaddr, frame, '5', '-'),
+        # *ARG = pop()
+        *asm_pop(D),
+        *asm_mov_derefptr(ARG, D),
+
+        # SP = ARG + 1
+        *asm_mov(SP, ARG),
+        *asm_inc_sp(),
+
+        # THAT = *(frame-1)
+        # THIS = *(frame-2)
+        # ARG = *(frame-3)
+        # LCL = *(frame-4)
+        *asm_lea(THAT, frame, '1', '-'),
+        *asm_lea(THIS, frame, '2', '-'),
+        *asm_lea(ARG, frame, '3', '-'),
+        *asm_lea(LCL, frame, '4', '-'),
+
+        # goto retaddr
+        retaddr,
+        'A=M',
+        '0;JMP',
+    ]
+    return asm
+
+
 def cmdtoasm(cmd):
     if cmd.is_push():
         asm = stackpushtoasm(cmd)
@@ -502,6 +654,12 @@ def cmdtoasm(cmd):
         asm = stackpoptoasm(cmd)
     elif cmd.is_branch():
         asm = branchtoasm(cmd)
+    elif cmd.is_function():
+        asm = functiontoasm(cmd)
+    elif cmd.is_call():
+        asm = calltoasm(cmd)
+    elif cmd.is_return():
+        asm = returntoasm(cmd)
     else:
         asm = arithtoasm(cmd)
     return '\n'.join(asm+[''])
@@ -515,10 +673,6 @@ def infloop():
         '',
     ]
     return '\n'.join(asm)
-
-
-def gen_funclabel(label):
-    asm = ['('+label+')']
 
 
 def main():
