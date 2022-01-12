@@ -12,6 +12,7 @@ Author: Phil Dreizen
 """
 import sys
 import os
+from pathlib import Path
 import re
 from collections import defaultdict
 from functools import partial
@@ -690,23 +691,32 @@ def infloop():
     return '\n'.join(asm)
 
 
+def isvmfile(f):
+    return f.suffix == '.vm'
+
+
 def main():
     global staticlookup
     if len(sys.argv) < 2:
         sys.exit("USAGE: VMTranslator.py input.vm")
 
-    vmfpath = sys.argv[1]   # input: vm file full path
-    dirname, vmfname = os.path.split(vmfpath)
-    basename, ext = os.path.splitext(vmfname)
-    staticlookup = create_static_lookup(basename)
+    path = Path(sys.argv[1])   # input: source path
+    if path.is_dir():
+        vmfiles = [f for f in path.iterdir() if isvmfile(f)]
+        outdir = path
+    else:
+        vmfiles = [path]
+        outdir = path.parent
 
-    asmfname = basename+'.asm'
-    asmpath = os.path.join(dirname, asmfname)
+    name = path.stem
+    staticlookup = create_static_lookup(name)
+    asmpath = outdir.joinpath(name + '.asm')
 
     with open(asmpath, 'w') as asmfile:
         asmfile.write(bootstrap())
-        for cmd in parse(vmfpath):
-            asmfile.write(cmdtoasm(cmd))
+        for vmfile in vmfiles:
+            for cmd in parse(vmfile):
+                asmfile.write(cmdtoasm(cmd))
         asmfile.write(infloop())
 
 
