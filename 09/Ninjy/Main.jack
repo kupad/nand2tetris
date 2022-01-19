@@ -1,0 +1,17 @@
+class Main {
+
+    function void main() {
+        var Ninjy ninjy;
+        let ninjy = Ninjy.new();
+       
+        do ninjy.draw();
+        //while(true) {
+        //    do ninjy.moveRight();
+        //}
+
+        
+
+        do ninjy.dispose();
+        return;
+    }
+}
