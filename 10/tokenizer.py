@@ -32,7 +32,8 @@ class Tokenizer:
         content = re.sub(r'/\*(.|\n)*?\*/', '', content, re.MULTILINE)
         # print(content)
 
-        regex = r'".+"|\w+|[{}()\[\]\.,;\+\-\*/&\|<>=~]'
+        regex = r'".+"|\n|\w+|[{}()\[\]\.,;\+\-\*/&\|<>=~]'
+        self.lineno = 1
         self.words = re.findall(regex, content)
         self.curr = self.peek = None
 
@@ -55,6 +56,9 @@ class Tokenizer:
             return
         self.curr = self.words[0]
         for word in self.words[1:]:
+            if word == '\n':
+                self.lineno += 1
+                continue
             self.peek = word
             if self.curr.strip():
                 yield self.curr.replace('"', '')
@@ -63,15 +67,20 @@ class Tokenizer:
         if self.curr.strip():
             yield self.curr.replace('"', '')
 
+    def curr_to_xml(self, indent=0):
+        token = self.curr
+        toktype = self.token_type()
+        token = re.sub(r'&', '&amp;', token)
+        token = re.sub(r'<', '&lt;', token)
+        token = re.sub(r'>', '&gt;', token)
+        token = re.sub(r'"', '&quot;', token)
+        return f'{"  "*indent}<{toktype}>{token}</{toktype}>'
+
     def to_xml_tree(self, outfile):
         outfile.write('<tokens>\n')
-        for token in self:
-            toktype = self.token_type()
-            token = re.sub(r'&', '&amp;', token)
-            token = re.sub(r'<', '&lt;', token)
-            token = re.sub(r'>', '&gt;', token)
-            token = re.sub(r'"', '&quot;', token)
-            outfile.write(f'<{toktype}>{token}</{toktype}>\n')
+        for _ in self:
+            outfile.write(self.curr_to_xml())
+            outfile.write("\n")
         outfile.write('</tokens>\n')
 
 
