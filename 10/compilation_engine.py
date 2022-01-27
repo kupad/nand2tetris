@@ -32,45 +32,45 @@ class CompilationEngine:
         self.indent = 0
 
     def curr(self):
+        """returns the current token being processed"""
         return self.tokenizer.curr
 
-    def processSkip(self):
-        """process next token...by skipping it"""
-        return next(self.it)
+    def is_type(self):
+        """returns true if the current token represents a type"""
+        return (
+            self.curr() in types or
+            self.tokenizer.token_type() == IDENTIFIER)
 
-    def processAny(self):
+    def processNext(self):
         """process next token. Do not check for anything"""
         print(self.tokenizer.curr_to_xml(self.indent), file=self.outfile)
         return next(self.it)
 
     def processVoidType(self):
         """process a void or a type token"""
-        return self.processAny()  # FIXME
-        #if self.curr() not in types and self.curr() != 'void':
-        #    raise JackError(
-        #            f'syntax error: found {self.curr()} expected type or void',
-        #            self.tokenizer.lineno)
-        #print(self.tokenizer.curr_to_xml(self.indent))
-        #return next(self.it)
+        if self.curr() != 'void' and not self.is_type():
+            raise JackError(
+                f"syntax error: found '{self.curr()}' expected type or void",
+                self.tokenizer.lineno)
+        return self.processNext()
 
     def processType(self):
         """process a type token"""
-        return self.processAny()  # FIXME
-        #if self.curr() not in types:
-        #    raise JackError(
-        #            f'syntax error: found {self.curr()} expected type',
-        #            self.tokenizer.lineno)
-        #print(self.tokenizer.curr_to_xml(self.indent))
-        #return next(self.it)
+        if not self.is_type():
+            raise JackError(
+                f'syntax error: found {self.curr()} expected type',
+                self.tokenizer.lineno)
+        return self.processNext()
 
     def processIdentifier(self):
+        """process an identifier """
         if self.tokenizer.token_type() != IDENTIFIER:
             msg = f"syntax error: found '{self.curr()}' expected an IDENTIFIER"
             raise JackError(msg, self.tokenizer.lineno)
-        print(self.tokenizer.curr_to_xml(self.indent), file=self.outfile)
-        return next(self.it)
+        return self.processNext()
 
     def processVarName(self):
+        """process a varName"""
         return self.processIdentifier()
 
     def process(self, s):
@@ -79,8 +79,7 @@ class CompilationEngine:
             raise JackError(
                     f'syntax error: found {self.curr()} expected: {s}',
                     self.tokenizer.lineno)
-        print(self.tokenizer.curr_to_xml(self.indent), file=self.outfile)
-        return next(self.it)
+        return self.processNext()
 
     def printStartNonTerm(self, s):
         """start of non-terminal"""
@@ -98,7 +97,7 @@ class CompilationEngine:
         """
         self.printStartNonTerm("class")
         self.process("class")
-        self.processAny()  # className
+        self.processIdentifier()  # className
         self.process("{")
         while self.curr() in ('static', 'field'):
             self.compileClassVarDec()
@@ -114,12 +113,12 @@ class CompilationEngine:
         ('static'|'field') type varName (',' varName)* ';'
         """
         self.printStartNonTerm("classVarDec")
-        self.process(self.curr())  # static|field
+        self.processNext()  # static | field
         self.processType()
-        self.processVarName()
+        self.processIdentifier()  # varName
         while self.curr() == ',':
             self.process(',')
-            self.processVarName()
+            self.processIdentifier()  # varName
         self.process(';')
         self.printEndNonTerm("classVarDec")
 
@@ -131,7 +130,7 @@ class CompilationEngine:
         self.printStartNonTerm("subroutineDec")
         if self.curr() in subroutine_start:
             self.process(self.curr())
-        self.processVoidType()  # ('void'|type)
+        self.processVoidType()
         self.processIdentifier()  # subroutineName
         self.process('(')
         self.compileParamList()
@@ -215,7 +214,8 @@ class CompilationEngine:
 
     def compileIf(self):
         """
-        'if' '(' expression ')' '{' statements '}' ('else' '{' statements '}' )?
+        'if' '(' expression ')' '{' statements '}'
+        ('else' '{' statements '}' )?
         """
         self.printStartNonTerm("ifStatement")
         self.process('if')
@@ -274,7 +274,7 @@ class CompilationEngine:
         self.printStartNonTerm("expression")
         self.compileTerm()
         while self.curr() in ops:
-            self.processAny()  # op
+            self.processNext()  # op
             self.compileTerm()
         self.printEndNonTerm("expression")
 
@@ -290,13 +290,13 @@ class CompilationEngine:
 
         self.printStartNonTerm("term")
         if curr_toktype in (INT_CONST, STRING_CONST, KEYWORD):
-            self.processAny()
+            self.processNext()
         elif curr == '(':
             self.process('(')
             self.compileExpression()
             self.process(')')
         elif curr in unary_op:
-            self.processAny()
+            self.processNext()
             self.compileTerm()
 
         # arr[expression]
@@ -318,6 +318,9 @@ class CompilationEngine:
 
     def compileSubroutineCall(self):
         """
+        subroutineName '(' expressionList ')' |
+        (className|varName)'.'subroutineName '(' expressionList ')'
+
         Note: subroutineCall is special: we don't print it out as a non-term
         """
         self.processIdentifier()  # subroutineName|className|varName

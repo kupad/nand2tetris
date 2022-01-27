@@ -79,7 +79,7 @@ class Tokenizer:
         token = re.sub(r'&', '&amp;', token)
         token = re.sub(r'<', '&lt;', token)
         token = re.sub(r'>', '&gt;', token)
-        token = re.sub(r'"', '&quot;', token)
+        token = re.sub(r'"', '', token)  # WTF: FIXME!
         return f'{"  "*indent}<{toktype}> {token} </{toktype}>'
 
     def to_xml_tree(self, outfile):
