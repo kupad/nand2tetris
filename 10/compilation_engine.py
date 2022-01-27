@@ -1,13 +1,15 @@
 #!/usr/bin/python3
 
-import sys
-from pathlib import Path
-from tokenizer import Tokenizer, IDENTIFIER
+from tokenizer import (
+    IDENTIFIER, INT_CONST, STRING_CONST, KEYWORD
+)
 
 types = set(['int', 'char', 'boolean'])
 subroutine_start = set(['constructor', 'function', 'method'])
 subroutine_types = set(['void', *types])
 statement_start = set(['let', 'if', 'let', 'while', 'do', 'return'])
+ops = set(['+',  '-', '*', '/', '&', '|', '<', '>', '='])
+unary_op = set(['-', '~'])
 
 
 class JackError(Exception):
@@ -250,14 +252,7 @@ class CompilationEngine:
         """
         self.printStartNonTerm("doStatement")
         self.process('do')
-        # self.compileExpression()  # FIXME
-        # subroutineCall
-        while self.curr() != '(':
-            self.processAny()
-        self.process('(')
-        self.compileExpressionList()
-        self.process(')')
-        # subroutineCall
+        self.compileSubroutineCall()
         self.process(';')
         self.printEndNonTerm("doStatement")
 
@@ -278,25 +273,79 @@ class CompilationEngine:
         """
         self.printStartNonTerm("expression")
         self.compileTerm()
+        while self.curr() in ops:
+            self.processAny()  # op
+            self.compileTerm()
         self.printEndNonTerm("expression")
 
     def compileTerm(self):
         """
+        integerConst | stringConst | keywordConst | varName |
+        varName '[' expression ']' | '(' expression ')' | unaryOp term |
+        subroutineCall
         """
+        curr = self.curr()
+        curr_toktype = self.tokenizer.token_type()
+        peek = self.tokenizer.peek
+
         self.printStartNonTerm("term")
-        self.processAny()  # FIXME / TODO
+        if curr_toktype in (INT_CONST, STRING_CONST, KEYWORD):
+            self.processAny()
+        elif curr == '(':
+            self.process('(')
+            self.compileExpression()
+            self.process(')')
+        elif curr in unary_op:
+            self.processAny()
+            self.compileTerm()
+
+        # arr[expression]
+        elif curr_toktype == IDENTIFIER and peek == '[':
+            self.processIdentifier()
+            self.process('[')
+            self.compileExpression()
+            self.process(']')
+
+        # subroutine call:
+        elif curr_toktype == IDENTIFIER and peek in ('(', '.'):
+            self.compileSubroutineCall()
+
+        # varName
+        else:
+            self.processIdentifier()
+
         self.printEndNonTerm("term")
+
+    def compileSubroutineCall(self):
+        """
+        Note: subroutineCall is special: we don't print it out as a non-term
+        """
+        self.processIdentifier()  # subroutineName|className|varName
+        if self.curr() == '(':
+            self.process('(')
+            self.compileExpressionList()
+            self.process(')')
+        elif self.curr() == '.':
+            self.process('.')
+            self.processIdentifier()  # subroutineName
+            self.process('(')
+            self.compileExpressionList()
+            self.process(')')
 
     def compileExpressionList(self):
         """
         """
+        count = 0
         self.printStartNonTerm("expressionList")
         if self.curr() != ')':
             self.compileExpression()
+            count += 1
         while self.curr() == ',':
             self.process(',')
             self.compileExpression()
+            count += 1
         self.printEndNonTerm("expressionList")
+        return count
 
     def start(self):
         try:
@@ -304,34 +353,3 @@ class CompilationEngine:
             self.compileClass()
         except StopIteration:
             pass
-
-
-def main():
-    if len(sys.argv) < 2:
-        sys.exit("USAGE: tokenizer.py input")
-
-    path = Path(sys.argv[1])   # input: source path
-    if path.is_dir():
-        jackfiles = [f for f in path.iterdir() if f.suffix == '.jack']
-        outdir = path
-    else:
-        jackfiles = [path]
-        outdir = path.parent
-
-    for fpath in jackfiles:
-        name = fpath.stem
-        xmlpath = outdir.joinpath(name + 'T.test.xml')
-        with open(fpath, 'r') as fp:
-            tokenizer = Tokenizer(fp.read())
-            compiler = CompilationEngine(tokenizer)
-            compiler.start()
-        # with open(xmlpath, 'w') as xmlfile:
-        #    tokenizer.to_xml_tree(xmlfile)
-
-
-if __name__ == '__main__':
-    try:
-        main()
-    except JackError as e:
-        sys.exit(e)
-

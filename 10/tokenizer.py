@@ -37,19 +37,25 @@ class Tokenizer:
         self.words = re.findall(regex, content)
         self.curr = self.peek = None
 
-    def token_type(self):
-        if self.curr in keywords:
+    def _token_type(self, tok):
+        if tok in keywords:
             return KEYWORD
-        elif self.curr in symbols:
+        elif tok in symbols:
             return SYMBOL
-        elif self.curr[0] == '"' and self.curr[-1] == '"':
+        elif tok[0] == '"' and tok[-1] == '"':
             return STRING_CONST
-        elif re.match(r'^\d+$', self.curr):
-            if int(self.curr) > 32767:
-                raise Exception(f'{self.curr} too large')
+        elif re.match(r'^\d+$', tok):
+            if int(tok) > 32767:
+                raise Exception(f'{tok} too large')
             return INT_CONST
         else:
             return IDENTIFIER
+
+    def token_type(self):
+        return self._token_type(self.curr)
+
+    def peek_token_type(self):
+        return self._token_type(self.peek)
 
     def __iter__(self):
         if not self.words:
@@ -74,7 +80,7 @@ class Tokenizer:
         token = re.sub(r'<', '&lt;', token)
         token = re.sub(r'>', '&gt;', token)
         token = re.sub(r'"', '&quot;', token)
-        return f'{"  "*indent}<{toktype}>{token}</{toktype}>'
+        return f'{"  "*indent}<{toktype}> {token} </{toktype}>'
 
     def to_xml_tree(self, outfile):
         outfile.write('<tokens>\n')
