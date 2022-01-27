@@ -23,8 +23,9 @@ class JackError(Exception):
 
 
 class CompilationEngine:
-    def __init__(self, tokenizer):
+    def __init__(self, tokenizer, outfile):
         self.tokenizer = tokenizer
+        self.outfile = outfile
         self.it = iter(self.tokenizer)
         self.indent = 0
 
@@ -37,7 +38,7 @@ class CompilationEngine:
 
     def processAny(self):
         """process next token. Do not check for anything"""
-        print(self.tokenizer.curr_to_xml(self.indent))
+        print(self.tokenizer.curr_to_xml(self.indent), file=self.outfile)
         return next(self.it)
 
     def processVoidType(self):
@@ -64,7 +65,7 @@ class CompilationEngine:
         if self.tokenizer.token_type() != IDENTIFIER:
             msg = f"syntax error: found '{self.curr()}' expected an IDENTIFIER"
             raise JackError(msg, self.tokenizer.lineno)
-        print(self.tokenizer.curr_to_xml(self.indent))
+        print(self.tokenizer.curr_to_xml(self.indent), file=self.outfile)
         return next(self.it)
 
     def processVarName(self):
@@ -76,18 +77,18 @@ class CompilationEngine:
             raise JackError(
                     f'syntax error: found {self.curr()} expected: {s}',
                     self.tokenizer.lineno)
-        print(self.tokenizer.curr_to_xml(self.indent))
+        print(self.tokenizer.curr_to_xml(self.indent), file=self.outfile)
         return next(self.it)
 
     def printStartNonTerm(self, s):
         """start of non-terminal"""
-        print(f"{'  '*self.indent}<{s}>")
+        print(f"{'  '*self.indent}<{s}>", file=self.outfile)
         self.indent += 1
 
     def printEndNonTerm(self, s):
         """start of non-terminal"""
         self.indent -= 1
-        print(f"{'  '*self.indent}</{s}>")
+        print(f"{'  '*self.indent}</{s}>", file=self.outfile)
 
     def compileClass(self):
         """
