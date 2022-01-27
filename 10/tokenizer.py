@@ -67,19 +67,21 @@ class Tokenizer:
                 continue
             self.peek = word
             if self.curr.strip():
-                yield self.curr.replace('"', '')
+                yield self.curr
             self.curr = self.peek
 
         if self.curr.strip():
-            yield self.curr.replace('"', '')
+            yield self.curr
 
     def curr_to_xml(self, indent=0):
         token = self.curr
         toktype = self.token_type()
+        if toktype == STRING_CONST:
+            token = token.replace('"', '')
         token = re.sub(r'&', '&amp;', token)
         token = re.sub(r'<', '&lt;', token)
         token = re.sub(r'>', '&gt;', token)
-        token = re.sub(r'"', '', token)  # WTF: FIXME!
+        token = re.sub(r'"', '&quot', token)
         return f'{"  "*indent}<{toktype}> {token} </{toktype}>'
 
     def to_xml_tree(self, outfile):
